@@ -17,5 +17,8 @@
   "bugs": {
     "url": "https://github.com/Ceravnos/lakbay-intramuros/issues"
   },
-  "homepage": "https://github.com/Ceravnos/lakbay-intramuros#readme"
+  "homepage": "https://github.com/Ceravnos/lakbay-intramuros#readme",
+  "dependencies": {
+    "@react-google-maps/api": "^2.20.8"
+  }
 }

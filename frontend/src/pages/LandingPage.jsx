@@ -120,20 +120,29 @@ const LandingPage = () => {
             <div className="flex-1 flex relative">
                 {/* Map Container */}
                 <div className="flex-1 relative bg-stone-100">
-                    {/* Google Map */}
+                    {/* Google Map - No directions for guests (unauthenticated) */}
                     <IntramurosMap
-                        markers={filteredLocations.map(l => ({
-                            id: l.id,
-                            name: l.name,
-                            lat: l.lat,
-                            lng: l.lng,
-                            address: l.description,
-                        }))}
+                        markers={sessionItinerary.length > 0 
+                            ? sessionItinerary.map(l => ({
+                                id: l.id,
+                                name: l.name,
+                                lat: l.lat,
+                                lng: l.lng,
+                                address: l.description,
+                            }))
+                            : filteredLocations.map(l => ({
+                                id: l.id,
+                                name: l.name,
+                                lat: l.lat,
+                                lng: l.lng,
+                                address: l.description,
+                            }))
+                        }
                         onMarkerClick={(marker) => {
                             const landmark = INTRAMUROS_LOCATIONS.find(l => l.id === marker.id);
                             if (landmark) addToItinerary(landmark);
                         }}
-                        showDirections={sessionItinerary.length > 1}
+                        showNumberedPins={sessionItinerary.length > 0}
                         className="absolute inset-0"
                     />
 
@@ -298,6 +307,13 @@ const LandingPage = () => {
 
                         {sessionItinerary.length > 0 && (
                             <div className="p-4 border-t border-stone-200 space-y-2">
+                                {/* Login to see routes tooltip for guests */}
+                                {!isAuthenticated && sessionItinerary.length > 1 && (
+                                    <div className="flex items-center gap-2 px-3 py-2 bg-stone-100 rounded-lg text-xs text-stone-500 mb-2">
+                                        <MapPin className="w-3.5 h-3.5" />
+                                        <span>Login to see routes & distances</span>
+                                    </div>
+                                )}
                                 <button
                                     onClick={handleSaveOrBook}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"

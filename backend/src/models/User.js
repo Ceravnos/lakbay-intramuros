@@ -53,6 +53,19 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        // Personalization preferences for Magic Generate
+        personalization: {
+            preferredCategories: {
+                type: [String],
+                default: [],
+            },
+            maxLocationsPerTrip: {
+                type: Number,
+                default: 5,
+                min: 1,
+                max: 10,
+            },
+        },
         // For password reset
         resetOtp: {
             type: String,

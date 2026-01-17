@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { 
     Compass, Clock, CheckCircle, Calendar, Users, MapPin,
     LogOut, RefreshCw, User, Phone, Mail, ChevronRight,
-    History, ClipboardList, Loader2
+    History, ClipboardList, Loader2, Map, AlertCircle, BadgeCheck
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
@@ -16,7 +16,9 @@ const GuideDashboard = () => {
     const [completedBookings, setCompletedBookings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
-    const { user, logout } = useAuth();
+    const { user, logout, toggleGuideMode, refreshUser } = useAuth();
+    const [error, setError] = useState(null);
+    const [switchingMode, setSwitchingMode] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -25,6 +27,7 @@ const GuideDashboard = () => {
 
     const fetchBookings = async () => {
         setLoading(true);
+        setError(null);
         try {
             const [pendingRes, acceptedRes, historyRes] = await Promise.all([
                 api.get("/bookings/pending"),
@@ -34,11 +37,37 @@ const GuideDashboard = () => {
             setPendingBookings(pendingRes.data);
             setAcceptedBookings(acceptedRes.data);
             setCompletedBookings(historyRes.data);
-        } catch (error) {
-            toast.error("Failed to fetch bookings");
-            console.error(error);
+        } catch (err) {
+            console.error(err);
+            const errorMessage = err.response?.data?.message || "Failed to fetch bookings";
+            setError(errorMessage);
+            
+            // If 403 error, try refreshing user data (in case status was updated)
+            if (err.response?.status === 403) {
+                try {
+                    await refreshUser();
+                    toast.info("Your account status has been updated. Please try again.");
+                } catch (refreshErr) {
+                    console.error("Failed to refresh user:", refreshErr);
+                }
+            } else {
+                toast.error(errorMessage);
+            }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSwitchToTouristMode = async () => {
+        setSwitchingMode(true);
+        try {
+            await toggleGuideMode();
+            toast.success("Switched to Tourist Mode");
+            navigate("/dashboard");
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to switch mode");
+        } finally {
+            setSwitchingMode(false);
         }
     };
 
@@ -105,8 +134,28 @@ const GuideDashboard = () => {
                                 <p className="text-stone-500 text-sm">Lakbay Intramuros</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <div className="hidden sm:block text-right">
+                        <div className="flex items-center gap-3">
+                            {/* Status Badge */}
+                            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-full">
+                                <BadgeCheck className="w-4 h-4 text-green-600" />
+                                <span className="text-xs font-medium text-green-700">Approved</span>
+                            </div>
+                            
+                            {/* Switch to Tourist Mode Button */}
+                            <button
+                                onClick={handleSwitchToTouristMode}
+                                disabled={switchingMode}
+                                className="flex items-center gap-2 px-3 py-2 bg-sage-50 text-sage-700 hover:bg-sage-100 border border-sage-200 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {switchingMode ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Map className="w-4 h-4" />
+                                )}
+                                <span className="hidden sm:inline text-sm font-medium">Tourist Mode</span>
+                            </button>
+                            
+                            <div className="hidden md:block text-right">
                                 <p className="text-sm font-medium text-stone-800">{user?.fullName}</p>
                                 <p className="text-xs text-stone-500">Tour Guide</p>
                             </div>
@@ -222,11 +271,31 @@ const GuideDashboard = () => {
                             </button>
                         </div>
 
+                        {/* Error State with Retry */}
+                        {error && !loading && (
+                            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                                    <div className="flex-1">
+                                        <p className="text-red-800 font-medium">Failed to load bookings</p>
+                                        <p className="text-red-600 text-sm mt-1">{error}</p>
+                                    </div>
+                                    <button
+                                        onClick={fetchBookings}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium rounded-lg transition-colors"
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                        Retry
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {loading ? (
                             <div className="flex items-center justify-center py-12">
                                 <Loader2 className="w-6 h-6 text-stone-400 animate-spin" />
                             </div>
-                        ) : (
+                        ) : !error && (
                             <>
                                 {/* Pending Requests */}
                                 {activeTab === "pending" && (

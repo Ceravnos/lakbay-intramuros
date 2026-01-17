@@ -44,16 +44,27 @@ const Navbar = () => {
                     <div className="flex gap-3 items-center">
                         {isAuthenticated ? (
                             <>
-                                {/* Show create button when not in guide mode */}
-                                {/* {!isGuideMode && (
-                                    <Link 
-                                        to="/itinerary" 
-                                        className="hidden sm:flex items-center gap-2 px-4 py-2 bg-terracotta-600 hover:bg-terracotta-700 text-white text-sm font-medium rounded-lg transition-colors"
+                                {/* Prominent Mode Toggle Button for Approved Guides */}
+                                {isApprovedGuide && (
+                                    <button
+                                        onClick={handleToggleGuideMode}
+                                        disabled={togglingMode}
+                                        className={`hidden sm:flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors border ${
+                                            isGuideMode 
+                                                ? "bg-sage-50 text-sage-700 border-sage-200 hover:bg-sage-100" 
+                                                : "bg-terracotta-50 text-terracotta-700 border-terracotta-200 hover:bg-terracotta-100"
+                                        }`}
                                     >
-                                        <PlusIcon className="w-4 h-4"/>
-                                        <span>New Itinerary</span>
-                                    </Link>
-                                )} */}
+                                        {togglingMode ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : isGuideMode ? (
+                                            <MapPin className="w-4 h-4" />
+                                        ) : (
+                                            <Compass className="w-4 h-4" />
+                                        )}
+                                        {isGuideMode ? "Tourist Mode" : "Guide Mode"}
+                                    </button>
+                                )}
 
                                 {/* User dropdown */}
                                 <div className="relative group">

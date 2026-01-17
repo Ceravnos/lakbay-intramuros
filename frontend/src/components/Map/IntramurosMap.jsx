@@ -51,9 +51,11 @@ const IntramurosMap = ({
     onMarkerClick,
     onMapClick,
     showDirections = false,
+    showNumberedPins = false,
     selectedMarkerId = null,
     interactive = true,
     className = '',
+    directionsResult = null,
 }) => {
     const { isLoaded, loadError } = useLoadScript({
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
@@ -62,7 +64,6 @@ const IntramurosMap = ({
 
     const mapRef = useRef(null);
     const [selectedMarker, setSelectedMarker] = useState(null);
-    const [directions, setDirections] = useState(null);
 
     const onLoad = useCallback((map) => {
         mapRef.current = map;
@@ -71,41 +72,6 @@ const IntramurosMap = ({
     const onUnmount = useCallback(() => {
         mapRef.current = null;
     }, []);
-
-    // Calculate directions when markers change
-    useEffect(() => {
-        if (!showDirections || markers.length < 2 || !isLoaded) {
-            setDirections(null);
-            return;
-        }
-
-        const directionsService = new window.google.maps.DirectionsService();
-        
-        const origin = { lat: markers[0].lat, lng: markers[0].lng };
-        const destination = { lat: markers[markers.length - 1].lat, lng: markers[markers.length - 1].lng };
-        const waypoints = markers.slice(1, -1).map(marker => ({
-            location: { lat: marker.lat, lng: marker.lng },
-            stopover: true,
-        }));
-
-        directionsService.route(
-            {
-                origin,
-                destination,
-                waypoints,
-                travelMode: window.google.maps.TravelMode.WALKING,
-                optimizeWaypoints: false,
-            },
-            (result, status) => {
-                if (status === 'OK') {
-                    setDirections(result);
-                } else {
-                    console.error('Directions request failed:', status);
-                    setDirections(null);
-                }
-            }
-        );
-    }, [markers, showDirections, isLoaded]);
 
     const handleMarkerClick = (marker) => {
         setSelectedMarker(marker);
@@ -158,10 +124,10 @@ const IntramurosMap = ({
             onUnmount={onUnmount}
             onClick={handleMapClick}
         >
-            {/* Render directions if available */}
-            {directions && (
+            {/* Render directions if available (passed from parent) */}
+            {directionsResult && (
                 <DirectionsRenderer
-                    directions={directions}
+                    directions={directionsResult}
                     options={{
                         suppressMarkers: true,
                         polylineOptions: {
@@ -173,21 +139,21 @@ const IntramurosMap = ({
                 />
             )}
 
-            {/* Render markers */}
+            {/* Render markers with sequential numbers */}
             {markers.map((marker, index) => (
                 <Marker
                     key={marker.id || marker.placeId || index}
                     position={{ lat: marker.lat, lng: marker.lng }}
                     onClick={() => handleMarkerClick(marker)}
-                    label={showDirections ? {
+                    label={showNumberedPins ? {
                         text: String(index + 1),
                         color: 'white',
                         fontWeight: 'bold',
                         fontSize: '12px',
                     } : undefined}
-                    icon={showDirections ? {
+                    icon={showNumberedPins ? {
                         path: window.google.maps.SymbolPath.CIRCLE,
-                        scale: 12,
+                        scale: 14,
                         fillColor: selectedMarkerId === marker.id ? '#B45309' : '#78716C',
                         fillOpacity: 1,
                         strokeColor: 'white',

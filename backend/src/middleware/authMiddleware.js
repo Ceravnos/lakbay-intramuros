@@ -46,12 +46,13 @@ export const adminOnly = (req, res, next) => {
 // Approved guide only middleware
 export const approvedGuideOnly = (req, res, next) => {
     if (req.user && req.user.role === "guide") {
-        if (req.user.status === "approved") {
+        // Fix: Use guideStatus instead of status to match the User model schema
+        if (req.user.guideStatus === "approved") {
             next();
         } else {
             return res.status(403).json({ 
                 message: "Access denied. Your account is pending approval.",
-                status: req.user.status 
+                guideStatus: req.user.guideStatus 
             });
         }
     } else {

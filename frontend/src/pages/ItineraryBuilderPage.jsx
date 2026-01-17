@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router';
 import { 
     MapPin, Plus, X, Navigation, Trash2, Save, GripVertical, 
-    Calendar, Users, ChevronLeft, Loader2, Route, Clock, Sparkles, Filter
+    Calendar, Users, ChevronLeft, Loader2, Route, Clock, Sparkles, 
+    Filter, Play, Settings, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../lib/axios';
+import { useAuth } from '../context/AuthContext';
 import IntramurosMap from '../components/Map/IntramurosMap';
 import { 
     INTRAMUROS_LOCATIONS, 
@@ -19,6 +21,7 @@ const ItineraryBuilderPage = () => {
     const { id } = useParams();
     const location = useLocation();
     const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
     
     const [itinerary, setItinerary] = useState({
         name: 'My Intramuros Trip',
@@ -32,6 +35,24 @@ const ItineraryBuilderPage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [showCategoryFilter, setShowCategoryFilter] = useState(false);
+    
+    // Magic Generate modal state
+    const [showMagicModal, setShowMagicModal] = useState(false);
+    const [magicStep, setMagicStep] = useState(1);
+    const [magicCount, setMagicCount] = useState(5);
+    const [magicCategory, setMagicCategory] = useState('all');
+    
+    // Directions state (only for authenticated users)
+    const [directionsResult, setDirectionsResult] = useState(null);
+    const [tripStarted, setTripStarted] = useState(false);
+    const [calculatingRoute, setCalculatingRoute] = useState(false);
+    
+    // Personalization modal
+    const [showPersonalization, setShowPersonalization] = useState(false);
+    const [userPreferences, setUserPreferences] = useState({
+        preferredCategories: [],
+        maxLocationsPerTrip: 5,
+    });
 
     // Load existing itinerary or session data
     useEffect(() => {
@@ -138,9 +159,44 @@ const ItineraryBuilderPage = () => {
         return matchesSearch && matchesCategory;
     });
 
-    // Smart Generate handler
-    const handleSmartGenerate = useCallback(() => {
-        const generated = generateSmartItinerary(selectedCategory, 5);
+    // Load user preferences on mount (for authenticated users)
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchUserPreferences();
+        }
+    }, [isAuthenticated]);
+
+    const fetchUserPreferences = async () => {
+        try {
+            const res = await api.get('/users/personalization');
+            setUserPreferences(res.data);
+            setMagicCount(res.data.maxLocationsPerTrip || 5);
+            if (res.data.preferredCategories?.length > 0) {
+                setMagicCategory(res.data.preferredCategories[0]);
+            }
+        } catch (error) {
+            console.log('Could not fetch preferences');
+        }
+    };
+
+    const saveUserPreferences = async () => {
+        try {
+            await api.put('/users/personalization', userPreferences);
+            toast.success('Preferences saved!');
+            setShowPersonalization(false);
+        } catch (error) {
+            toast.error('Failed to save preferences');
+        }
+    };
+
+    // Magic Generate - Step by step flow
+    const openMagicModal = () => {
+        setMagicStep(1);
+        setShowMagicModal(true);
+    };
+
+    const handleMagicGenerate = () => {
+        const generated = generateSmartItinerary(magicCategory, magicCount);
         setItinerary(prev => ({
             ...prev,
             locations: generated.map((loc, index) => ({
@@ -155,8 +211,70 @@ const ItineraryBuilderPage = () => {
                 estimatedTime: loc.estimatedTime,
             })),
         }));
+        // Clear any existing route when generating new itinerary
+        setDirectionsResult(null);
+        setTripStarted(false);
+        setShowMagicModal(false);
         toast.success(`Generated ${generated.length} stops!`);
-    }, [selectedCategory]);
+    };
+
+    // Start Trip - Calculate directions (authenticated only)
+    const handleStartTrip = useCallback(async () => {
+        if (!isAuthenticated) {
+            toast.error('Please login to see routes');
+            return;
+        }
+        
+        if (itinerary.locations.length < 2) {
+            toast.error('Add at least 2 locations to start trip');
+            return;
+        }
+
+        setCalculatingRoute(true);
+        
+        try {
+            const directionsService = new window.google.maps.DirectionsService();
+            const sortedLocations = [...itinerary.locations].sort((a, b) => a.order - b.order);
+            
+            const origin = { lat: sortedLocations[0].lat, lng: sortedLocations[0].lng };
+            const destination = { lat: sortedLocations[sortedLocations.length - 1].lat, lng: sortedLocations[sortedLocations.length - 1].lng };
+            const waypoints = sortedLocations.slice(1, -1).map(loc => ({
+                location: { lat: loc.lat, lng: loc.lng },
+                stopover: true,
+            }));
+
+            directionsService.route(
+                {
+                    origin,
+                    destination,
+                    waypoints,
+                    travelMode: window.google.maps.TravelMode.WALKING,
+                    optimizeWaypoints: false,
+                },
+                (result, status) => {
+                    if (status === 'OK') {
+                        setDirectionsResult(result);
+                        setTripStarted(true);
+                        toast.success('Route calculated!');
+                    } else {
+                        toast.error('Could not calculate route');
+                    }
+                    setCalculatingRoute(false);
+                }
+            );
+        } catch (error) {
+            toast.error('Failed to calculate route');
+            setCalculatingRoute(false);
+        }
+    }, [isAuthenticated, itinerary.locations]);
+
+    // Clear route when locations change
+    useEffect(() => {
+        if (tripStarted) {
+            setDirectionsResult(null);
+            setTripStarted(false);
+        }
+    }, [itinerary.locations.length]);
 
     // Calculate total estimated time
     const totalTime = calculateTotalTime(itinerary.locations);
@@ -220,15 +338,18 @@ const ItineraryBuilderPage = () => {
                 <div className="flex-1 relative bg-stone-100">
                     {/* Google Map */}
                     <IntramurosMap
-                        markers={itinerary.locations.map(loc => ({
-                            id: loc.placeId,
-                            placeId: loc.placeId,
-                            name: loc.name,
-                            lat: loc.lat,
-                            lng: loc.lng,
-                            address: loc.address,
-                        }))}
-                        showDirections={itinerary.locations.length > 1}
+                        markers={itinerary.locations
+                            .sort((a, b) => a.order - b.order)
+                            .map(loc => ({
+                                id: loc.placeId,
+                                placeId: loc.placeId,
+                                name: loc.name,
+                                lat: loc.lat,
+                                lng: loc.lng,
+                                address: loc.address,
+                            }))}
+                        showNumberedPins={itinerary.locations.length > 0}
+                        directionsResult={directionsResult}
                         className="absolute inset-0"
                     />
 
@@ -252,7 +373,7 @@ const ItineraryBuilderPage = () => {
                             <div className="p-3 border-b border-stone-200 bg-gradient-to-r from-terracotta-50 to-sand-50">
                                 <div className="flex items-center gap-2">
                                     <button
-                                        onClick={handleSmartGenerate}
+                                        onClick={openMagicModal}
                                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-terracotta-600 to-terracotta-500 hover:from-terracotta-700 hover:to-terracotta-600 text-white font-medium rounded-lg transition-all shadow-sm"
                                     >
                                         <Sparkles className="w-4 h-4" />
@@ -352,7 +473,76 @@ const ItineraryBuilderPage = () => {
 
                 {/* Right - Itinerary Panel */}
                 <div className="w-96 border-l border-stone-200 flex flex-col bg-white">
-                    {/* Trip Details */}
+                    {/* Sticky Header - Itinerary Name, Actions */}
+                    <div className="p-4 border-b border-stone-200 bg-white sticky top-0 z-10">
+                        {/* Itinerary Name Input */}
+                        <input
+                            type="text"
+                            value={itinerary.name}
+                            onChange={(e) => setItinerary(prev => ({ ...prev, name: e.target.value }))}
+                            className="w-full text-lg font-serif font-semibold text-stone-800 bg-transparent border-none focus:outline-none focus:ring-0 mb-2"
+                            placeholder="Name your itinerary..."
+                        />
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                            {/* Start Trip Button */}
+                            {isAuthenticated ? (
+                                <button
+                                    onClick={handleStartTrip}
+                                    disabled={calculatingRoute || itinerary.locations.length < 2}
+                                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium transition-all ${
+                                        tripStarted
+                                            ? 'bg-sage-100 text-sage-700 border border-sage-300'
+                                            : 'bg-sage-600 hover:bg-sage-700 text-white'
+                                    }`}
+                                >
+                                    {calculatingRoute ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Play className="w-4 h-4" />
+                                    )}
+                                    {tripStarted ? 'Route Active' : 'Start Trip'}
+                                </button>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-stone-100 text-stone-500 rounded-lg text-sm">
+                                    <Lock className="w-4 h-4" />
+                                    Login to see routes
+                                </div>
+                            )}
+                            
+                            {/* Manage Personalization */}
+                            {isAuthenticated && (
+                                <button
+                                    onClick={() => setShowPersonalization(true)}
+                                    className="p-2.5 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
+                                    title="Manage Personalization"
+                                >
+                                    <Settings className="w-5 h-5" />
+                                </button>
+                            )}
+                        </div>
+                        
+                        {/* Trip Stats */}
+                        <div className="flex items-center gap-3 mt-3 text-xs text-stone-500">
+                            <span className="flex items-center gap-1">
+                                <MapPin className="w-3.5 h-3.5" />
+                                {itinerary.locations.length} stops
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5" />
+                                ~{Math.round(totalTime / 60 * 10) / 10}h
+                            </span>
+                            {tripStarted && (
+                                <span className="flex items-center gap-1 text-sage-600">
+                                    <Route className="w-3.5 h-3.5" />
+                                    Route ready
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {/* Trip Details - Collapsible */}
                     <div className="p-4 border-b border-stone-200 space-y-3">
                         <div className="flex gap-3">
                             <div className="flex-1">
@@ -384,18 +574,6 @@ const ItineraryBuilderPage = () => {
                                     />
                                 </div>
                             </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-stone-500 mb-1">
-                                Description (optional)
-                            </label>
-                            <textarea
-                                value={itinerary.description}
-                                onChange={(e) => setItinerary(prev => ({ ...prev, description: e.target.value }))}
-                                placeholder="Add notes about your trip..."
-                                rows={2}
-                                className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500 resize-none"
-                            />
                         </div>
                     </div>
 
@@ -466,18 +644,199 @@ const ItineraryBuilderPage = () => {
                         <div className="p-4 border-t border-stone-200">
                             <button
                                 onClick={() => navigate(`/book/${id}`)}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors"
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"
                             >
                                 <Users className="w-4 h-4" />
                                 Book a Guide
                             </button>
-                            <p className="text-xs text-stone-500 text-center mt-2">
-                                Connect with a local guide for your trip
-                            </p>
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* Magic Generate Modal */}
+            {showMagicModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+                        <div className="p-6 border-b border-stone-200 bg-gradient-to-r from-terracotta-50 to-sand-50">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-terracotta-100 rounded-full flex items-center justify-center">
+                                        <Sparkles className="w-5 h-5 text-terracotta-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="font-serif font-semibold text-stone-800">Magic Generate</h2>
+                                        <p className="text-xs text-stone-500">Step {magicStep} of 2</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowMagicModal(false)}
+                                    className="p-2 text-stone-400 hover:text-stone-600 rounded-lg"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6">
+                            {magicStep === 1 ? (
+                                <>
+                                    <h3 className="font-medium text-stone-800 mb-2">How many locations?</h3>
+                                    <p className="text-sm text-stone-500 mb-4">Choose the number of stops for your itinerary</p>
+                                    
+                                    <div className="space-y-4">
+                                        <input
+                                            type="range"
+                                            min="1"
+                                            max="10"
+                                            value={magicCount}
+                                            onChange={(e) => setMagicCount(parseInt(e.target.value))}
+                                            className="w-full accent-terracotta-600"
+                                        />
+                                        <div className="flex justify-between text-sm text-stone-500">
+                                            <span>1</span>
+                                            <span className="font-semibold text-terracotta-600 text-lg">{magicCount}</span>
+                                            <span>10</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        onClick={() => setMagicStep(2)}
+                                        className="w-full mt-6 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"
+                                    >
+                                        Next: Choose Category
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <h3 className="font-medium text-stone-800 mb-2">Category Preference</h3>
+                                    <p className="text-sm text-stone-500 mb-4">What type of places interest you?</p>
+                                    
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {LOCATION_CATEGORIES.map((cat) => (
+                                            <button
+                                                key={cat.id}
+                                                onClick={() => setMagicCategory(cat.id)}
+                                                className={`p-3 rounded-lg border-2 text-left transition-all ${
+                                                    magicCategory === cat.id
+                                                        ? 'border-terracotta-500 bg-terracotta-50'
+                                                        : 'border-stone-200 hover:border-stone-300'
+                                                }`}
+                                            >
+                                                <p className="font-medium text-stone-800 text-sm">{cat.name}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    
+                                    <div className="flex gap-3 mt-6">
+                                        <button
+                                            onClick={() => setMagicStep(1)}
+                                            className="flex-1 px-4 py-3 border border-stone-300 text-stone-700 font-medium rounded-lg hover:bg-stone-50 transition-colors"
+                                        >
+                                            Back
+                                        </button>
+                                        <button
+                                            onClick={handleMagicGenerate}
+                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"
+                                        >
+                                            <Sparkles className="w-4 h-4" />
+                                            Generate
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Personalization Modal */}
+            {showPersonalization && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+                        <div className="p-6 border-b border-stone-200">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-sage-100 rounded-full flex items-center justify-center">
+                                        <Settings className="w-5 h-5 text-sage-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="font-serif font-semibold text-stone-800">Personalization</h2>
+                                        <p className="text-xs text-stone-500">Customize your Magic Generate</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowPersonalization(false)}
+                                    className="p-2 text-stone-400 hover:text-stone-600 rounded-lg"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 space-y-6">
+                            <div>
+                                <h3 className="font-medium text-stone-800 mb-2">Preferred Categories</h3>
+                                <p className="text-sm text-stone-500 mb-3">Select your interests for smarter suggestions</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {LOCATION_CATEGORIES.filter(c => c.id !== 'all').map((cat) => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => {
+                                                const current = userPreferences.preferredCategories || [];
+                                                const updated = current.includes(cat.id)
+                                                    ? current.filter(c => c !== cat.id)
+                                                    : [...current, cat.id];
+                                                setUserPreferences(prev => ({ ...prev, preferredCategories: updated }));
+                                            }}
+                                            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                                                userPreferences.preferredCategories?.includes(cat.id)
+                                                    ? 'bg-sage-100 text-sage-700 border-2 border-sage-300'
+                                                    : 'bg-stone-100 text-stone-600 border-2 border-transparent'
+                                            }`}
+                                        >
+                                            {cat.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h3 className="font-medium text-stone-800 mb-2">Default Location Count</h3>
+                                <p className="text-sm text-stone-500 mb-3">Preferred number of stops per trip</p>
+                                <div className="flex items-center gap-4">
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="10"
+                                        value={userPreferences.maxLocationsPerTrip || 5}
+                                        onChange={(e) => setUserPreferences(prev => ({ ...prev, maxLocationsPerTrip: parseInt(e.target.value) }))}
+                                        className="flex-1 accent-sage-600"
+                                    />
+                                    <span className="font-semibold text-sage-600 w-8 text-center">
+                                        {userPreferences.maxLocationsPerTrip || 5}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 border-t border-stone-200 flex gap-3">
+                            <button
+                                onClick={() => setShowPersonalization(false)}
+                                className="flex-1 px-4 py-3 border border-stone-300 text-stone-700 font-medium rounded-lg hover:bg-stone-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={saveUserPreferences}
+                                className="flex-1 px-4 py-3 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors"
+                            >
+                                Save Preferences
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

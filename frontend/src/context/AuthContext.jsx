@@ -84,6 +84,18 @@ export const AuthProvider = ({ children }) => {
         return res.data;
     };
 
+    // Silent refresh user data from server (useful after admin approval)
+    const refreshUser = async () => {
+        try {
+            const res = await api.get("/auth/me");
+            setUser(res.data);
+            return res.data;
+        } catch (error) {
+            console.error("Failed to refresh user data:", error);
+            throw error;
+        }
+    };
+
     // Logout
     const logout = () => {
         localStorage.removeItem("token");
@@ -117,6 +129,7 @@ export const AuthProvider = ({ children }) => {
         loginAdmin,
         applyForGuide,
         toggleGuideMode,
+        refreshUser,
         logout,
         forgotPassword,
         verifyOtp,

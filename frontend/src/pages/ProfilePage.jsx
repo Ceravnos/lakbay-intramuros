@@ -387,6 +387,10 @@ const ProfilePage = () => {
                             <span className="text-stone-800 font-medium">{user?.email}</span>
                         </div>
                         <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                            <span className="text-stone-500">Phone</span>
+                            <span className="text-stone-800 font-medium">{user?.phoneNumber}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-3 border-b border-stone-100">
                             <span className="text-stone-500">Account Type</span>
                             <span className="text-stone-800 font-medium capitalize">{user?.role}</span>
                         </div>

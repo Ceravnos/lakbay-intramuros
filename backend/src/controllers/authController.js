@@ -110,6 +110,34 @@ export const toggleGuideMode = async (req, res) => {
     }
 };
 
+// @desc    Toggle activity status (for guides)
+// @route   PUT /api/auth/toggle-activity-status
+export const toggleActivityStatus = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.role !== "guide") {
+            return res.status(403).json({ message: "You must be a guide to toggle activity status" });
+        }
+
+        user.activityStatus = user.activityStatus === "active" ? "inactive" : "active";
+        await user.save();
+
+        res.json({
+            message: user.activityStatus === "active" ? "You are now active" : "You are now inactive",
+            activityStatus: user.activityStatus,
+        });
+    } catch (error) {
+        console.error("Toggle activity status error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 // @desc    Unified login
 // @route   POST /api/auth/login
 export const login = async (req, res) => {

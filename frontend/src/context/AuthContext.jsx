@@ -84,6 +84,12 @@ export const AuthProvider = ({ children }) => {
         return res.data;
     };
 
+    //Toggle active status
+    const toggleActivityStatus = async () => {
+    const res = await api.put("/auth/toggle-activity-status");
+    return res.data;
+    };
+
     // Silent refresh user data from server (useful after admin approval)
     const refreshUser = async () => {
         try {
@@ -129,6 +135,7 @@ export const AuthProvider = ({ children }) => {
         loginAdmin,
         applyForGuide,
         toggleGuideMode,
+        toggleActivityStatus,
         refreshUser,
         logout,
         forgotPassword,

@@ -16,7 +16,8 @@ const GuideDashboard = () => {
     const [completedBookings, setCompletedBookings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
-    const { user, logout, toggleGuideMode, refreshUser } = useAuth();
+    const [statusLoading, setStatusLoading] = useState(false);
+    const { user, logout, toggleGuideMode, toggleActivityStatus, refreshUser } = useAuth();
     const [error, setError] = useState(null);
     const [switchingMode, setSwitchingMode] = useState(false);
     const navigate = useNavigate();
@@ -42,7 +43,6 @@ const GuideDashboard = () => {
             const errorMessage = err.response?.data?.message || "Failed to fetch bookings";
             setError(errorMessage);
             
-            // If 403 error, try refreshing user data (in case status was updated)
             if (err.response?.status === 403) {
                 try {
                     await refreshUser();
@@ -68,6 +68,21 @@ const GuideDashboard = () => {
             toast.error(err.response?.data?.message || "Failed to switch mode");
         } finally {
             setSwitchingMode(false);
+        }
+    };
+
+    const handleToggleActivityStatus = async () => {
+        setStatusLoading(true);
+        try {
+            await toggleActivityStatus();
+            toast.success(
+                user.activityStatus === "active" ? "You are now inactive" : "You are now active"
+            );
+            await refreshUser();
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to toggle activity status");
+        } finally {
+            setStatusLoading(false);
         }
     };
 
@@ -134,13 +149,33 @@ const GuideDashboard = () => {
                                 <p className="text-stone-500 text-sm">Lakbay Intramuros</p>
                             </div>
                         </div>
+
+                        {/* Right Section */}
                         <div className="flex items-center gap-3">
                             {/* Status Badge */}
                             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-full">
                                 <BadgeCheck className="w-4 h-4 text-green-600" />
                                 <span className="text-xs font-medium text-green-700">Approved</span>
                             </div>
-                            
+
+                            {/* Activity Status Toggle */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-stone-700">Activity:</span>
+                                <button
+                                    onClick={handleToggleActivityStatus}
+                                    disabled={statusLoading}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                        user?.activityStatus === "active" ? "bg-green-600" : "bg-red-500"
+                                    }`}
+                                >
+                                    <span
+                                        className={`inline-block h-4 w-4 bg-white rounded-full transform transition-transform ${
+                                            user?.activityStatus === "active" ? "translate-x-6" : "translate-x-1"
+                                        }`}
+                                    />
+                                </button>
+                            </div>
+
                             {/* Switch to Tourist Mode Button */}
                             <button
                                 onClick={handleSwitchToTouristMode}
@@ -154,7 +189,7 @@ const GuideDashboard = () => {
                                 )}
                                 <span className="hidden sm:inline text-sm font-medium">Tourist Mode</span>
                             </button>
-                            
+
                             <div className="hidden md:block text-right">
                                 <p className="text-sm font-medium text-stone-800">{user?.fullName}</p>
                                 <p className="text-xs text-stone-500">Tour Guide</p>

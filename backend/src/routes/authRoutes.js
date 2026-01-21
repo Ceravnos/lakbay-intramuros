@@ -5,6 +5,7 @@ import {
     loginAdmin,
     applyForGuide,
     toggleGuideMode,
+    toggleActivityStatus,
     getMe,
     forgotPassword,
     verifyOtp,
@@ -25,6 +26,7 @@ router.post("/admin-login", loginAdmin);
 router.get("/me", protect, getMe);
 router.post("/apply-guide", protect, applyForGuide);
 router.put("/toggle-guide-mode", protect, toggleGuideMode);
+router.put("/toggle-activity-status", protect, toggleActivityStatus);
 
 // Password reset routes
 router.post("/forgot-password", forgotPassword);

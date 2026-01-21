@@ -6,10 +6,15 @@ import Itinerary from "../models/Itinerary.js";
 // @route   POST /api/bookings
 export const createBooking = async (req, res) => {
     try {
-        const { itineraryId, preferredDate, numberOfPeople, notes } = req.body;
+        const { itineraryId, guideId, tripDetails, preferredDate, numberOfPeople, notes } = req.body;
         const touristId = req.user._id;
 
-        if (!itineraryId || !preferredDate) {
+        // Support both old format (preferredDate at root) and new format (tripDetails object)
+        const bookingDate = tripDetails?.preferredDate || preferredDate;
+        const bookingPeople = tripDetails?.numberOfPeople || numberOfPeople;
+        const bookingNotes = tripDetails?.notes || notes;
+
+        if (!itineraryId || !bookingDate) {
             return res.status(400).json({ message: "Itinerary ID and preferred date are required" });
         }
 
@@ -22,6 +27,17 @@ export const createBooking = async (req, res) => {
         // Verify ownership
         if (itinerary.userId.toString() !== touristId.toString()) {
             return res.status(403).json({ message: "You can only book your own itineraries" });
+        }
+
+        // If guideId is provided, verify the guide exists and is approved
+        if (guideId) {
+            const guide = await User.findById(guideId);
+            if (!guide) {
+                return res.status(404).json({ message: "Selected guide not found" });
+            }
+            if (guide.role !== "guide" || guide.guideStatus !== "approved") {
+                return res.status(400).json({ message: "Selected user is not an approved guide" });
+            }
         }
 
         // Check if tourist already has a pending booking for this itinerary
@@ -37,16 +53,23 @@ export const createBooking = async (req, res) => {
             });
         }
 
-        const booking = await Booking.create({
+        const bookingData = {
             touristId,
             itineraryId,
             tripDetails: {
-                title: itinerary.name,
-                preferredDate: new Date(preferredDate),
-                numberOfPeople: numberOfPeople || itinerary.numberOfPeople || 1,
-                notes: notes || "",
+                title: tripDetails?.title || itinerary.name,
+                preferredDate: new Date(bookingDate),
+                numberOfPeople: bookingPeople || itinerary.numberOfPeople || 1,
+                notes: bookingNotes || "",
             },
-        });
+        };
+
+        // If a specific guide was selected, assign them directly
+        if (guideId) {
+            bookingData.guideId = guideId;
+        }
+
+        const booking = await Booking.create(bookingData);
 
         // Update itinerary status
         itinerary.status = "booked";

@@ -60,9 +60,12 @@ export const approvedGuideOnly = (req, res, next) => {
     }
 };
 
-// Tourist only middleware
+// Tourist only middleware (also allows approved guides in tourist mode)
 export const touristOnly = (req, res, next) => {
     if (req.user && req.user.role === "tourist") {
+        next();
+    } else if (req.user && req.user.role === "guide" && req.user.guideStatus === "approved" && !req.user.isGuideMode) {
+        // Approved guides in tourist mode can also access tourist features
         next();
     } else {
         return res.status(403).json({ message: "Access denied. Tourist only." });

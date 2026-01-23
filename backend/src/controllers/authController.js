@@ -1,6 +1,11 @@
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
 
+export const touchLastActivity = async (user) => {
+    user.lastActivityAt = new Date();
+    await user.save();
+};
+
 // @desc    Register a new user
 // @route   POST /api/auth/register
 export const register = async (req, res) => {
@@ -100,6 +105,8 @@ export const toggleGuideMode = async (req, res) => {
         user.isGuideMode = !user.isGuideMode;
         await user.save();
 
+        await touchLastActivity(user);
+
         res.json({
             message: user.isGuideMode ? "Switched to Guide Mode" : "Switched to Tourist Mode",
             isGuideMode: user.isGuideMode,
@@ -109,6 +116,8 @@ export const toggleGuideMode = async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 };
+
+
 
 // @desc    Toggle activity status (for guides)
 // @route   PUT /api/auth/toggle-activity-status
@@ -127,6 +136,8 @@ export const toggleActivityStatus = async (req, res) => {
 
         user.activityStatus = user.activityStatus === "active" ? "inactive" : "active";
         await user.save();
+
+        await touchLastActivity(user);
 
         res.json({
             message: user.activityStatus === "active" ? "You are now active" : "You are now inactive",
@@ -170,6 +181,11 @@ export const login = async (req, res) => {
             isGuideMode: user.isGuideMode,
             token,
         });
+
+        if(user.role === "guide"){
+            await touchLastActivity(user);
+        }
+
     } catch (error) {
         console.error("Login error:", error);
         res.status(500).json({ message: "Server error during login" });

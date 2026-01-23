@@ -89,12 +89,15 @@ export const createBooking = async (req, res) => {
 // @route   GET /api/bookings/pending
 export const getPendingBookings = async (req, res) => {
     try {
+        
+
         const pendingBookings = await Booking.find({ status: "pending" })
             .populate("touristId", "fullName email")
             .populate("itineraryId")
             .sort({ createdAt: -1 });
 
         res.json(pendingBookings);
+
     } catch (error) {
         console.error("Get pending bookings error:", error);
         res.status(500).json({ message: "Server error fetching bookings" });
@@ -105,6 +108,8 @@ export const getPendingBookings = async (req, res) => {
 // @route   GET /api/bookings/my-accepted
 export const getMyAcceptedBookings = async (req, res) => {
     try {
+        
+
         const guideId = req.user._id;
         
         const acceptedBookings = await Booking.find({ 
@@ -116,6 +121,7 @@ export const getMyAcceptedBookings = async (req, res) => {
             .sort({ acceptedAt: -1 });
 
         res.json(acceptedBookings);
+        
     } catch (error) {
         console.error("Get accepted bookings error:", error);
         res.status(500).json({ message: "Server error fetching bookings" });
@@ -126,6 +132,8 @@ export const getMyAcceptedBookings = async (req, res) => {
 // @route   GET /api/bookings/history
 export const getBookingHistory = async (req, res) => {
     try {
+        
+
         const guideId = req.user._id;
         
         const completedBookings = await Booking.find({ 
@@ -137,6 +145,7 @@ export const getBookingHistory = async (req, res) => {
             .sort({ completedAt: -1 });
 
         res.json(completedBookings);
+
     } catch (error) {
         console.error("Get booking history error:", error);
         res.status(500).json({ message: "Server error fetching history" });
@@ -147,6 +156,8 @@ export const getBookingHistory = async (req, res) => {
 // @route   PUT /api/bookings/:id/accept
 export const acceptBooking = async (req, res) => {
     try {
+        
+
         const { id } = req.params;
         const guideId = req.user._id;
 
@@ -173,6 +184,8 @@ export const acceptBooking = async (req, res) => {
             message: "Booking accepted successfully",
             booking: updatedBooking,
         });
+
+
     } catch (error) {
         console.error("Accept booking error:", error);
         res.status(500).json({ message: "Server error accepting booking" });
@@ -183,6 +196,8 @@ export const acceptBooking = async (req, res) => {
 // @route   PUT /api/bookings/:id/complete
 export const completeBooking = async (req, res) => {
     try {
+        
+
         const { id } = req.params;
         const guideId = req.user._id;
 
@@ -208,6 +223,8 @@ export const completeBooking = async (req, res) => {
             message: "Booking marked as complete",
             booking,
         });
+
+
     } catch (error) {
         console.error("Complete booking error:", error);
         res.status(500).json({ message: "Server error completing booking" });

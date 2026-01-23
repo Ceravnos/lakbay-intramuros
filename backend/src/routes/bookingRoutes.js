@@ -11,12 +11,13 @@ import {
     getBookingStats,
 } from "../controllers/bookingController.js";
 import { protect, adminOnly, approvedGuideOnly, touristOnly } from "../middleware/authMiddleware.js";
+import { updateLastActivity } from "../middleware/updateLastActivity.js";
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(protect);
-
+router.use(updateLastActivity);
 // Tourist routes
 router.post("/", touristOnly, createBooking);
 router.get("/my-bookings", touristOnly, getMyBookings);

@@ -13,6 +13,7 @@ import api from "../../lib/axios";
 const AdminDashboard = () => {
     const [stats, setStats] = useState({
         totalGuides: 0,
+        activeGuides: 0,
         pendingGuides: 0,
         approvedGuides: 0,
         rejectedGuides: 0,
@@ -24,6 +25,7 @@ const AdminDashboard = () => {
     });
     const [pendingGuides, setPendingGuides] = useState([]);
     const [allGuides, setAllGuides] = useState([]);
+    const [activeGuides, setActiveGuides] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState("pending");
     const [searchTerm, setSearchTerm] = useState("");
@@ -41,15 +43,17 @@ const AdminDashboard = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [statsRes, pendingRes, allRes, bookingStatsRes] = await Promise.all([
+            const [statsRes, pendingRes, allRes, activeRes, bookingStatsRes] = await Promise.all([
                 api.get("/admin/stats"),
                 api.get("/admin/pending-guides"),
                 api.get("/admin/guides"),
+                api.get("/admin/active-guides"),
                 api.get("/bookings/stats").catch(() => ({ data: {} })),
             ]);
             setStats(statsRes.data);
             setPendingGuides(pendingRes.data);
             setAllGuides(allRes.data);
+            setActiveGuides(activeRes.data);
             setBookingStats(bookingStatsRes.data);
         } catch (error) {
             toast.error("Failed to fetch data");
@@ -90,20 +94,44 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleLogout = () => {
-        logout();
-        navigate("/login");
+    const handleLogout = async () => {
+        try {
+            if (user?.role === "guide") {
+                await api.put("/auth/toggle-activity-status", {
+                    forceInactive: true
+                });
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            logout();
+            navigate("/login");
+        }
     };
+
 
     const openGuideModal = (guide) => {
         setSelectedGuide(guide);
         setShowModal(true);
     };
 
-    const filteredGuides = (activeTab === "pending" ? pendingGuides : allGuides).filter(guide =>
+    const filteredGuides = allGuides
+    .filter((guide) => {
+        if (activeTab === "pending") {
+            return guide.status === "pending";
+        }
+
+        if (activeTab === "active") {
+            return guide.activityStatus === "active";
+        }
+
+        return true; // "all"
+    })
+    .filter((guide) =>
         guide.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         guide.email.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
 
     const getStatusBadge = (status) => {
         switch (status) {
@@ -250,8 +278,19 @@ const AdminDashboard = () => {
                                         : "bg-stone-100 text-stone-600 hover:bg-stone-200"
                                 }`}
                             >
-                                All Guides
+                                All Guides ({stats.totalGuides})
                             </button>
+                            <button
+                                onClick={() => setActiveTab("active")}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    activeTab === "active"
+                                        ? "bg-stone-800 text-white"
+                                        : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                }`}
+                            >
+                                Active Guides ({stats.activeGuides})
+                            </button>
+
                         </div>
                         <div className="flex gap-2">
                             <div className="relative flex-1 sm:w-64">
@@ -299,7 +338,14 @@ const AdminDashboard = () => {
                                                 </span>
                                             </div>
                                             <div>
-                                                <h3 className="font-medium text-stone-800">{guide.fullName}</h3>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="font-medium text-stone-800">
+                                                        {guide.fullName}
+                                                    </h3>
+                                                    {guide.activityStatus === "active" && (
+                                                        <span className="w-2.5 h-2.5 bg-green-500 rounded-full" />
+                                                    )}
+                                                </div>
                                                 <p className="text-stone-500 text-sm">{guide.email}</p>
                                             </div>
                                         </div>

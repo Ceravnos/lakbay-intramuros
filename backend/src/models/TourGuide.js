@@ -20,11 +20,6 @@ const tourGuideSchema = new mongoose.Schema(
             required: true,
             trim: true,
         },
-        contactNumber: {
-            type: String,
-            required: true,
-            trim: true,
-        },
         accreditationFile: {
             type: String, // URL/path to uploaded file
             required: true,

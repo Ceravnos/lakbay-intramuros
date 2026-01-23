@@ -114,9 +114,19 @@ const GuideDashboard = () => {
         }
     };
 
-    const handleLogout = () => {
-        logout();
-        navigate("/login");
+    const handleLogout = async () => {
+    try {
+        if (user?.role === "guide") {
+            await api.put("/auth/toggle-activity-status", {
+                forceInactive: true
+            });
+        }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            logout();
+            navigate("/login");
+        }
     };
 
     const formatDate = (date) => {
@@ -335,11 +345,23 @@ const GuideDashboard = () => {
                                 {/* Pending Requests */}
                                 {activeTab === "pending" && (
                                     <div className="space-y-4">
-                                        {pendingBookings.length === 0 ? (
+                                        {user?.activityStatus === "inactive" ? (
+                                            <div className="text-center py-12">
+                                                <Clock className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                                                <p className="text-stone-600 font-medium">
+                                                    Your activity status is set to inactive
+                                                </p>
+                                                <p className="text-stone-400 text-sm mt-1">
+                                                    Change it to active to be able to get bookings.
+                                                </p>
+                                            </div>
+                                        ) : pendingBookings.length === 0 ? (
                                             <div className="text-center py-12">
                                                 <Clock className="w-12 h-12 text-stone-300 mx-auto mb-3" />
                                                 <p className="text-stone-500">No pending requests</p>
-                                                <p className="text-stone-400 text-sm mt-1">New booking requests will appear here</p>
+                                                <p className="text-stone-400 text-sm mt-1">
+                                                    New booking requests will appear here
+                                                </p>
                                             </div>
                                         ) : (
                                             pendingBookings.map((booking) => (

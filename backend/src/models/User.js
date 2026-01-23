@@ -41,6 +41,10 @@ const userSchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
+        lastActivityAt: {
+            type: Date,
+            default: Date.now
+        },
         accreditationUrl: {
             type: String,
             default: null,

@@ -11,6 +11,7 @@ import itineraryRoutes from "./routes/itineraryRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import { connectDB } from "./config/db.js";
 import rateLimiter from "./middleware/rateLimiter.js";
+import { startGuideInactivityWatcher } from "./services/guideInactivityWatcher.js";
 
 dotenv.config();
 
@@ -59,6 +60,8 @@ connectDB().then(() => {
         console.log("[app.js] Server started on PORT: 4000");
     });
 });
+
+startGuideInactivityWatcher();
 
 
  

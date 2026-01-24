@@ -46,8 +46,8 @@ export const AuthProvider = ({ children }) => {
     };
 
     // Unified register
-    const register = async (email, password, fullName) => {
-        const res = await api.post("/auth/register", { email, password, fullName });
+    const register = async (email, password, fullName, phoneNumber) => {
+        const res = await api.post("/auth/register", { email, password, fullName, phoneNumber });
         const { token, ...userData } = res.data;
         localStorage.setItem("token", token);
         api.defaults.headers.common["Authorization"] = `Bearer ${token}`;

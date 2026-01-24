@@ -5,9 +5,9 @@ import { generateToken } from "../utils/jwt.js";
 // @route   POST /api/auth/register
 export const register = async (req, res) => {
     try {
-        const { email, password, fullName } = req.body;
+        const { email, password, fullName, phoneNumber } = req.body;
 
-        if (!email || !password || !fullName) {
+        if (!email || !password || !fullName || !phoneNumber) {
             return res.status(400).json({ message: "Please provide all required fields" });
         }
 
@@ -21,6 +21,7 @@ export const register = async (req, res) => {
             email,
             password,
             fullName,
+            phoneNumber,
             role: "tourist",
         });
 
@@ -30,6 +31,7 @@ export const register = async (req, res) => {
             _id: user._id,
             email: user.email,
             fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
             role: user.role,
             guideStatus: user.guideStatus,
             isGuideMode: user.isGuideMode,
@@ -136,6 +138,7 @@ export const login = async (req, res) => {
             _id: user._id,
             email: user.email,
             fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
             role: user.role,
             guideStatus: user.guideStatus,
             contactNumber: user.contactNumber,

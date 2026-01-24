@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 const SignupPage = () => {
     const [formData, setFormData] = useState({
         fullName: "",
+        phoneNumber: "",
         email: "",
         password: "",
         confirmPassword: "",
@@ -23,10 +24,20 @@ const SignupPage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const { fullName, email, password, confirmPassword } = formData;
+        const { fullName, phoneNumber, email, password, confirmPassword } = formData;
 
-        if (!fullName || !email || !password || !confirmPassword) {
+        if (!fullName || !phoneNumber || !email || !password || !confirmPassword) {
             toast.error("Please fill in all fields");
+            return;
+        }
+
+        if (phoneNumber.length !== 11) {
+            toast.error("Phone number must be 11 digits");
+            return;
+        }
+
+        if (!/^[0-9]+$/.test(phoneNumber)) {
+            toast.error("Phone number must contain only numbers");
             return;
         }
 
@@ -42,7 +53,7 @@ const SignupPage = () => {
 
         setLoading(true);
         try {
-            await register(email, password, fullName);
+            await register(email, password, fullName, phoneNumber);
             toast.success("Account created successfully!");
             navigate("/");
         } catch (error) {
@@ -103,6 +114,23 @@ const SignupPage = () => {
                                         onChange={handleChange}
                                         className="w-full pl-11 pr-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
                                         placeholder="Enter your full name"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-2">
+                                    Phone Number
+                                </label>
+                                <div className="relative">
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                    <input
+                                        type="text"
+                                        name="phoneNumber"
+                                        value={formData.phoneNumber}
+                                        onChange={handleChange}
+                                        className="w-full pl-11 pr-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
+                                        placeholder="Enter your 11-digit phone number"
                                     />
                                 </div>
                             </div>

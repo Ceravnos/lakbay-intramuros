@@ -86,9 +86,21 @@ export const AuthProvider = ({ children }) => {
 
     //Toggle active status
     const toggleActivityStatus = async () => {
-    const res = await api.put("/auth/toggle-activity-status");
-    return res.data;
+        if (user.activityStatus === "working") {
+            toast.error("You are currently working on a booking");
+            return;
+        }
+
+        const res = await api.put("/auth/toggle-activity-status");
+
+        setUser((prev) => ({
+            ...prev,
+            activityStatus: res.data.activityStatus,
+        }));
+
+        return res.data;
     };
+
 
     // Silent refresh user data from server (useful after admin approval)
     const refreshUser = async () => {

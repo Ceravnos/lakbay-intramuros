@@ -1,6 +1,7 @@
 import Booking from "../models/Booking.js";
 import User from "../models/User.js";
 import Itinerary from "../models/Itinerary.js";
+import { setGuideActivityStatus } from "../utils/guideActivity.js";
 
 // @desc    Create a new booking request (Tourist only)
 // @route   POST /api/bookings
@@ -144,7 +145,7 @@ export const getBookingHistory = async (req, res) => {
             .populate("itineraryId")
             .sort({ completedAt: -1 });
 
-        res.json(completedBookings);
+        res.json({completedBookings});
 
     } catch (error) {
         console.error("Get booking history error:", error);
@@ -157,9 +158,9 @@ export const getBookingHistory = async (req, res) => {
 export const acceptBooking = async (req, res) => {
     try {
         
-
         const { id } = req.params;
         const guideId = req.user._id;
+        const guide = await User.findById(guideId);
 
         const booking = await Booking.findById(id);
         
@@ -176,6 +177,8 @@ export const acceptBooking = async (req, res) => {
         booking.acceptedAt = new Date();
         await booking.save();
 
+        await setGuideActivityStatus(guide, "working");
+
         const updatedBooking = await Booking.findById(id)
             .populate("touristId", "fullName email")
             .populate("itineraryId");
@@ -183,6 +186,7 @@ export const acceptBooking = async (req, res) => {
         res.json({
             message: "Booking accepted successfully",
             booking: updatedBooking,
+            activityStatus: guide.activityStatus,
         });
 
 
@@ -197,9 +201,9 @@ export const acceptBooking = async (req, res) => {
 export const completeBooking = async (req, res) => {
     try {
         
-
         const { id } = req.params;
         const guideId = req.user._id;
+        const guide = await User.findById(guideId);
 
         const booking = await Booking.findById(id);
         
@@ -219,9 +223,16 @@ export const completeBooking = async (req, res) => {
         booking.completedAt = new Date();
         await booking.save();
 
+        await setGuideActivityStatus(guide, "active");
+
+        const updatedBooking = await Booking.findById(id)
+            .populate("touristId", "fullName email")
+            .populate("itineraryId");
+
         res.json({
             message: "Booking marked as complete",
             booking,
+            activityStatus: guide.activityStatus,
         });
 
 

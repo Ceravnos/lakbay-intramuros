@@ -9,7 +9,27 @@ import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/axios";
 
+const activityStyles = {
+    active: {
+        bg: "bg-green-600",
+        knob: "translate-x-6",
+    },
+    working: {
+        bg: "bg-orange-500",
+        knob: "translate-x-1",
+    },
+    inactive: {
+        bg: "bg-red-500",
+        knob: "translate-x-1",
+    },
+};
+
 const GuideDashboard = () => {
+    const { user, logout, toggleGuideMode, toggleActivityStatus, refreshUser } = useAuth();
+
+    const currentActivity =
+        activityStyles[user?.activityStatus] || activityStyles.inactive;
+
     const [activeTab, setActiveTab] = useState("pending");
     const [pendingBookings, setPendingBookings] = useState([]);
     const [acceptedBookings, setAcceptedBookings] = useState([]);
@@ -17,9 +37,9 @@ const GuideDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
     const [statusLoading, setStatusLoading] = useState(false);
-    const { user, logout, toggleGuideMode, toggleActivityStatus, refreshUser } = useAuth();
     const [error, setError] = useState(null);
     const [switchingMode, setSwitchingMode] = useState(false);
+
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -92,6 +112,7 @@ const GuideDashboard = () => {
             await api.put(`/bookings/${bookingId}/accept`);
             toast.success("Booking accepted!");
             fetchBookings();
+            await refreshUser();
         } catch (error) {
             toast.error(error.response?.data?.message || "Failed to accept booking");
         } finally {
@@ -107,6 +128,7 @@ const GuideDashboard = () => {
             await api.put(`/bookings/${bookingId}/complete`);
             toast.success("Tour marked as complete!");
             fetchBookings();
+            await refreshUser();
         } catch (error) {
             toast.error(error.response?.data?.message || "Failed to complete booking");
         } finally {
@@ -171,21 +193,22 @@ const GuideDashboard = () => {
                             {/* Activity Status Toggle */}
                             <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-stone-700">Activity:</span>
+
                                 <button
                                     onClick={handleToggleActivityStatus}
-                                    disabled={statusLoading}
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                        user?.activityStatus === "active" ? "bg-green-600" : "bg-red-500"
-                                    }`}
+                                    disabled={statusLoading || user?.activityStatus === "working"}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                                        ${currentActivity.bg}
+                                    `}
                                 >
                                     <span
-                                        className={`inline-block h-4 w-4 bg-white rounded-full transform transition-transform ${
-                                            user?.activityStatus === "active" ? "translate-x-6" : "translate-x-1"
-                                        }`}
+                                        className={`inline-block h-4 w-4 bg-white rounded-full transform transition-transform
+                                            ${currentActivity.knob}
+                                        `}
                                     />
                                 </button>
                             </div>
-
+                            
                             {/* Switch to Tourist Mode Button */}
                             <button
                                 onClick={handleSwitchToTouristMode}

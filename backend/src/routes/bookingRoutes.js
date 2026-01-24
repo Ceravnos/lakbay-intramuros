@@ -27,7 +27,9 @@ router.put("/:id/cancel", touristOnly, cancelBooking);
 router.get("/pending", approvedGuideOnly, getPendingBookings);
 router.get("/my-accepted", approvedGuideOnly, getMyAcceptedBookings);
 router.get("/history", approvedGuideOnly, getBookingHistory);
+
 router.put("/:id/accept", approvedGuideOnly, acceptBooking);
+
 router.put("/:id/complete", approvedGuideOnly, completeBooking);
 
 // Admin routes

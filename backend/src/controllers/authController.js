@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
+import { setGuideActivityStatus } from "../utils/guideActivity.js";
 
 export const touchLastActivity = async (user) => {
     user.lastActivityAt = new Date();
@@ -134,13 +135,16 @@ export const toggleActivityStatus = async (req, res) => {
             return res.status(403).json({ message: "You must be a guide to toggle activity status" });
         }
 
-        user.activityStatus = user.activityStatus === "active" ? "inactive" : "active";
-        await user.save();
+        if (user.activityStatus === "inactive") {
+            await setGuideActivityStatus(user, "active");
+        } else if (user.activityStatus === "active") {
+            await setGuideActivityStatus(user, "inactive");
+        }
 
         await touchLastActivity(user);
 
         res.json({
-            message: user.activityStatus === "active" ? "You are now active" : "You are now inactive",
+            message: `You are now ${user.activityStatus}`,
             activityStatus: user.activityStatus,
         });
     } catch (error) {

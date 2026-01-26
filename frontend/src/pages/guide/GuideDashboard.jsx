@@ -57,7 +57,7 @@ const GuideDashboard = () => {
             ]);
             setPendingBookings(pendingRes.data);
             setAcceptedBookings(acceptedRes.data);
-            setCompletedBookings(historyRes.data);
+            setCompletedBookings(historyRes.data.completedBookings || []);
         } catch (err) {
             console.error(err);
             const errorMessage = err.response?.data?.message || "Failed to fetch bookings";
@@ -423,7 +423,7 @@ const GuideDashboard = () => {
                                                         </div>
                                                         <button
                                                             onClick={() => handleAccept(booking._id)}
-                                                            disabled={actionLoading === booking._id}
+                                                            disabled={actionLoading === booking._id || user?.activityStatus !== "active"}
                                                             className="flex items-center justify-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full sm:w-auto"
                                                         >
                                                             {actionLoading === booking._id ? (

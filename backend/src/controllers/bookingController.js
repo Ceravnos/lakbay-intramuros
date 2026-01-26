@@ -39,6 +39,12 @@ export const createBooking = async (req, res) => {
             if (guide.role !== "guide" || guide.guideStatus !== "approved") {
                 return res.status(400).json({ message: "Selected user is not an approved guide" });
             }
+
+            if (guide.activityStatus !== "active") {
+                return res.status(409).json({
+                    message: "Guide is no longer active. Please select another guide.",
+                });
+            }
         }
 
         // Check if tourist already has a pending booking for this itinerary
@@ -170,6 +176,12 @@ export const acceptBooking = async (req, res) => {
 
         if (booking.status !== "pending") {
             return res.status(400).json({ message: "Booking is no longer pending" });
+        }
+
+        if (guide.activityStatus !== "active") {
+            return res.status(403).json({
+                message: "You must be active to accept a booking"
+            });
         }
 
         booking.guideId = guideId;

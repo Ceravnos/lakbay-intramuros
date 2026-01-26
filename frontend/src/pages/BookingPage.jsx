@@ -70,6 +70,7 @@ const BookingPage = () => {
             return;
         }
 
+
         setSubmitting(true);
         try {
             await api.post('/bookings', {
@@ -86,7 +87,15 @@ const BookingPage = () => {
             toast.success('Booking request sent!');
             navigate('/dashboard');
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to create booking');
+            // Detect if backend returned 409
+            if (error.response?.status === 409) {
+                toast.error(error.response.data.message);
+
+                // Trigger refresh function
+                fetchData(); // or whatever function you use to reload guides
+            } else {
+                toast.error(error.response?.data?.message || "Failed to create booking");
+            }
         } finally {
             setSubmitting(false);
         }

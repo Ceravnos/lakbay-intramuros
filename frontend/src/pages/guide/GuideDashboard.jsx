@@ -1,13 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { 
     Compass, Clock, CheckCircle, Calendar, Users, MapPin,
     LogOut, RefreshCw, User, Phone, Mail, ChevronRight,
-    History, ClipboardList, Loader2, Map, AlertCircle, BadgeCheck
+    History, ClipboardList, Loader2, Map, AlertCircle, BadgeCheck,
+    XCircle
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/axios";
+import { socket } from '../../lib/socket'
 
 const activityStyles = {
     active: {
@@ -34,6 +36,7 @@ const GuideDashboard = () => {
     const [pendingBookings, setPendingBookings] = useState([]);
     const [acceptedBookings, setAcceptedBookings] = useState([]);
     const [completedBookings, setCompletedBookings] = useState([]);
+    const [rejectedBookings, setRejectedBookings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
     const [statusLoading, setStatusLoading] = useState(false);
@@ -42,22 +45,20 @@ const GuideDashboard = () => {
 
     const navigate = useNavigate();
 
-    useEffect(() => {
-        fetchBookings();
-    }, []);
-
     const fetchBookings = async () => {
         setLoading(true);
         setError(null);
         try {
-            const [pendingRes, acceptedRes, historyRes] = await Promise.all([
+            const [pendingRes, acceptedRes, historyRes, rejectedRes] = await Promise.all([
                 api.get("/bookings/pending"),
                 api.get("/bookings/my-accepted"),
                 api.get("/bookings/history"),
+                api.get("/bookings/my-rejected"),
             ]);
             setPendingBookings(pendingRes.data);
             setAcceptedBookings(acceptedRes.data);
             setCompletedBookings(historyRes.data.completedBookings || []);
+            setRejectedBookings(rejectedRes.data);
         } catch (err) {
             console.error(err);
             const errorMessage = err.response?.data?.message || "Failed to fetch bookings";
@@ -77,6 +78,26 @@ const GuideDashboard = () => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        fetchBookings();
+    }, []);
+
+    useEffect(() => {
+        if (!user || user.role !== "guide") return;
+
+        const handleNewBooking = (data) => {
+            toast.success(data.message); // or toast(...)
+            fetchBookings(); // 🔄 refresh dashboard
+        };
+
+        socket.on("booking:requested", handleNewBooking);
+
+        return () => {
+            socket.off("booking:requested", handleNewBooking);
+        };
+    }, [user, fetchBookings]);
+
 
     const handleSwitchToTouristMode = async () => {
         setSwitchingMode(true);
@@ -119,6 +140,27 @@ const GuideDashboard = () => {
             setActionLoading(null);
         }
     };
+
+    const handleReject = async (bookingId) => {
+        const confirmed = window.confirm(
+            "Are you sure you want to reject this booking? This action cannot be undone."
+        );
+
+        if (!confirmed) return;
+
+        setActionLoading(bookingId);
+        try {
+            await api.put(`/bookings/${bookingId}/reject`);
+            toast.success("Booking rejected!");
+            fetchBookings();
+            await refreshUser();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to reject booking");
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
 
     const handleComplete = async (bookingId) => {
         if (!window.confirm("Mark this tour as completed?")) return;
@@ -164,6 +206,7 @@ const GuideDashboard = () => {
         pending: pendingBookings.length,
         active: acceptedBookings.length,
         completed: completedBookings.length,
+        rejected: rejectedBookings.length,
     };
 
     return (
@@ -195,8 +238,16 @@ const GuideDashboard = () => {
                                 <span className="text-sm font-medium text-stone-700">Activity:</span>
 
                                 <button
-                                    onClick={handleToggleActivityStatus}
-                                    disabled={statusLoading || user?.activityStatus === "working"}
+                                    onClick={() => {
+                                        if (user?.activityStatus === "working") {
+                                            toast.error("Please finish your current tour first.");
+                                            toast.error("Currently working — cannot toggle status to active.");
+                                            return;
+                                        }
+
+                                        handleToggleActivityStatus();
+                                    }}
+                                    disabled={statusLoading}
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
                                         ${currentActivity.bg}
                                     `}
@@ -207,6 +258,7 @@ const GuideDashboard = () => {
                                         `}
                                     />
                                 </button>
+
                             </div>
                             
                             {/* Switch to Tourist Mode Button */}
@@ -241,7 +293,7 @@ const GuideDashboard = () => {
 
             <main className="max-w-6xl mx-auto px-4 py-8">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="grid grid-cols-4 gap-4 mb-8">
                     <div className="bg-white rounded-xl border border-stone-200 p-5">
                         <div className="flex items-center justify-between">
                             <div>
@@ -272,6 +324,17 @@ const GuideDashboard = () => {
                             </div>
                             <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center">
                                 <CheckCircle className="w-6 h-6 text-stone-500" />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-stone-200 p-5">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-stone-500 text-sm">Rejected</p>
+                                <p className="text-3xl font-semibold text-stone-700 mt-1">{stats.rejected}</p>
+                            </div>
+                            <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center">
+                                <XCircle className="w-6 h-6 text-stone-500" />
                             </div>
                         </div>
                     </div>
@@ -421,20 +484,37 @@ const GuideDashboard = () => {
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <button
-                                                            onClick={() => handleAccept(booking._id)}
-                                                            disabled={actionLoading === booking._id || user?.activityStatus !== "active"}
-                                                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full sm:w-auto"
-                                                        >
-                                                            {actionLoading === booking._id ? (
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                            ) : (
-                                                                <>
-                                                                    <CheckCircle className="w-4 h-4" />
-                                                                    Accept
-                                                                </>
-                                                            )}
-                                                        </button>
+                                                        <div className="flex flex-col gap-2">
+                                                            <button
+                                                                onClick={() => handleAccept(booking._id)}
+                                                                disabled={actionLoading === booking._id || user?.activityStatus !== "active"}
+                                                                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                            >
+                                                                {actionLoading === booking._id ? (
+                                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                                ) : (
+                                                                    <>
+                                                                        <CheckCircle className="w-4 h-4" />
+                                                                        Accept
+                                                                    </>
+                                                                )}
+                                                            </button>
+
+                                                            <button
+                                                                onClick={() => handleReject(booking._id)}
+                                                                disabled={actionLoading === booking._id}
+                                                                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                            >
+                                                                {actionLoading === booking._id ? (
+                                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                                ) : (
+                                                                    <>
+                                                                        <XCircle className="w-4 h-4" />
+                                                                        Reject
+                                                                    </>
+                                                                )}
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))
@@ -508,10 +588,10 @@ const GuideDashboard = () => {
                                 {/* History */}
                                 {activeTab === "history" && (
                                     <div>
-                                        {completedBookings.length === 0 ? (
+                                        {completedBookings.length === 0 && rejectedBookings.length === 0 ? (
                                             <div className="text-center py-12">
                                                 <History className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-                                                <p className="text-stone-500">No completed tours yet</p>
+                                                <p className="text-stone-500">No completed or rejected tours yet</p>
                                                 <p className="text-stone-400 text-sm mt-1">Your tour history will appear here</p>
                                             </div>
                                         ) : (
@@ -523,11 +603,17 @@ const GuideDashboard = () => {
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Tourist</th>
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Date</th>
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Group Size</th>
-                                                            <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Completed</th>
+                                                            <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Status</th>
+                                                            <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Completed at</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {completedBookings.map((booking) => (
+                                                        {[
+                                                            ...completedBookings.map(b => ({ ...b, displayStatus: "completed" })),
+                                                            ...rejectedBookings.map(b => ({ ...b, displayStatus: "rejected" }))
+                                                        ]
+                                                        .sort((a, b) => new Date(b.completedAt || b.rejectedAt) - new Date(a.completedAt || a.rejectedAt))
+                                                        .map((booking) => (
                                                             <tr key={booking._id} className="border-b border-stone-100 hover:bg-stone-50">
                                                                 <td className="py-3 px-4">
                                                                     <span className="font-medium text-stone-800">{booking.tripDetails?.title}</span>
@@ -535,7 +621,14 @@ const GuideDashboard = () => {
                                                                 <td className="py-3 px-4 text-stone-600">{booking.touristId?.fullName}</td>
                                                                 <td className="py-3 px-4 text-stone-600">{formatDate(booking.tripDetails?.preferredDate)}</td>
                                                                 <td className="py-3 px-4 text-stone-600">{booking.tripDetails?.numberOfPeople}</td>
-                                                                <td className="py-3 px-4 text-stone-500 text-sm">{formatDate(booking.completedAt)}</td>
+                                                                <td className={`py-3 px-4 text-sm ${
+                                                                    booking.displayStatus === "completed" ? "text-stone-500" : "text-red-600"
+                                                                }`}>
+                                                                    {booking.displayStatus === "completed" ? "Completed" : "Rejected"}
+                                                                </td>
+                                                                <td className="py-3 px-4 text-sm text-stone-500">
+                                                                    {booking.displayStatus === "completed" ? formatDate(booking.completedAt) : ""}
+                                                                </td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -544,6 +637,7 @@ const GuideDashboard = () => {
                                         )}
                                     </div>
                                 )}
+
                             </>
                         )}
                     </div>

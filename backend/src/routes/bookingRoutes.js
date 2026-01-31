@@ -1,0 +1,42 @@
+import express from "express";
+import {
+    createBooking,
+    getPendingBookings,
+    getMyAcceptedBookings,
+    getMyRejectedBookings,
+    getBookingHistory,
+    acceptBooking,
+    rejectBooking,
+    completeBooking,
+    getMyBookings,
+    cancelBooking,
+    getBookingStats,
+} from "../controllers/bookingController.js";
+import { protect, adminOnly, approvedGuideOnly, touristOnly } from "../middleware/authMiddleware.js";
+import { updateLastActivity } from "../middleware/updateLastActivity.js";
+
+const router = express.Router();
+
+// All routes require authentication
+router.use(protect);
+router.use(updateLastActivity);
+// Tourist routes
+router.post("/", touristOnly, createBooking);
+router.get("/my-bookings", touristOnly, getMyBookings);
+router.put("/:id/cancel", touristOnly, cancelBooking);
+
+// Guide routes (approved guides only)
+router.get("/pending", approvedGuideOnly, getPendingBookings);
+router.get("/my-accepted", approvedGuideOnly, getMyAcceptedBookings);
+router.get("/history", approvedGuideOnly, getBookingHistory);
+router.get("/my-rejected", approvedGuideOnly, getMyRejectedBookings);
+
+router.put("/:id/accept", approvedGuideOnly, acceptBooking);
+router.put("/:id/reject", approvedGuideOnly, rejectBooking);
+
+router.put("/:id/complete", approvedGuideOnly, completeBooking);
+
+// Admin routes
+router.get("/stats", adminOnly, getBookingStats);
+
+export default router;

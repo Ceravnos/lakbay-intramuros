@@ -1,5 +1,11 @@
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
+import { setGuideActivityStatus } from "../utils/guideActivity.js";
+
+export const touchLastActivity = async (user) => {
+    user.lastActivityAt = new Date();
+    await user.save();
+};
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -102,12 +108,49 @@ export const toggleGuideMode = async (req, res) => {
         user.isGuideMode = !user.isGuideMode;
         await user.save();
 
+        await touchLastActivity(user);
+
         res.json({
             message: user.isGuideMode ? "Switched to Guide Mode" : "Switched to Tourist Mode",
             isGuideMode: user.isGuideMode,
         });
     } catch (error) {
         console.error("Toggle guide mode error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+
+
+// @desc    Toggle activity status (for guides)
+// @route   PUT /api/auth/toggle-activity-status
+export const toggleActivityStatus = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.role !== "guide") {
+            return res.status(403).json({ message: "You must be a guide to toggle activity status" });
+        }
+
+        if (user.activityStatus === "inactive") {
+            await setGuideActivityStatus(user, "active");
+        } else if (user.activityStatus === "active") {
+            await setGuideActivityStatus(user, "inactive");
+        }
+
+        await touchLastActivity(user);
+
+        res.json({
+            message: `You are now ${user.activityStatus}`,
+            activityStatus: user.activityStatus,
+        });
+    } catch (error) {
+        console.error("Toggle activity status error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };
@@ -145,6 +188,11 @@ export const login = async (req, res) => {
             isGuideMode: user.isGuideMode,
             token,
         });
+
+        if(user.role === "guide"){
+            await touchLastActivity(user);
+        }
+
     } catch (error) {
         console.error("Login error:", error);
         res.status(500).json({ message: "Server error during login" });

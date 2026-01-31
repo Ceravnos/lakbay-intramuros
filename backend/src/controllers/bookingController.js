@@ -1,6 +1,8 @@
 import Booking from "../models/Booking.js";
 import User from "../models/User.js";
 import Itinerary from "../models/Itinerary.js";
+import { setGuideActivityStatus } from "../utils/guideActivity.js";
+import { io } from "../app.js";
 
 // @desc    Create a new booking request (Tourist only)
 // @route   POST /api/bookings
@@ -8,6 +10,7 @@ export const createBooking = async (req, res) => {
     try {
         const { itineraryId, guideId, tripDetails, preferredDate, numberOfPeople, notes } = req.body;
         const touristId = req.user._id;
+        const tourist = await User.findById(touristId);
 
         // Support both old format (preferredDate at root) and new format (tripDetails object)
         const bookingDate = tripDetails?.preferredDate || preferredDate;
@@ -37,6 +40,12 @@ export const createBooking = async (req, res) => {
             }
             if (guide.role !== "guide" || guide.guideStatus !== "approved") {
                 return res.status(400).json({ message: "Selected user is not an approved guide" });
+            }
+
+            if (guide.activityStatus !== "active") {
+                return res.status(409).json({
+                    message: "Guide is no longer active. Please select another guide.",
+                });
             }
         }
 
@@ -75,6 +84,12 @@ export const createBooking = async (req, res) => {
         itinerary.status = "booked";
         await itinerary.save();
 
+         // 🔔 NOTIFY THE GUIDE
+        io.to(guideId.toString()).emit("booking:requested", {
+            bookingId: booking._id,
+            message: `New booking request from ${tourist.fullName}`,
+        });
+
         res.status(201).json({
             message: "Booking request submitted successfully",
             booking,
@@ -89,12 +104,15 @@ export const createBooking = async (req, res) => {
 // @route   GET /api/bookings/pending
 export const getPendingBookings = async (req, res) => {
     try {
+        
+
         const pendingBookings = await Booking.find({ status: "pending" })
             .populate("touristId", "fullName email")
             .populate("itineraryId")
             .sort({ createdAt: -1 });
 
         res.json(pendingBookings);
+
     } catch (error) {
         console.error("Get pending bookings error:", error);
         res.status(500).json({ message: "Server error fetching bookings" });
@@ -105,6 +123,8 @@ export const getPendingBookings = async (req, res) => {
 // @route   GET /api/bookings/my-accepted
 export const getMyAcceptedBookings = async (req, res) => {
     try {
+        
+
         const guideId = req.user._id;
         
         const acceptedBookings = await Booking.find({ 
@@ -116,8 +136,33 @@ export const getMyAcceptedBookings = async (req, res) => {
             .sort({ acceptedAt: -1 });
 
         res.json(acceptedBookings);
+        
     } catch (error) {
         console.error("Get accepted bookings error:", error);
+        res.status(500).json({ message: "Server error fetching bookings" });
+    }
+};
+
+// @desc    Get guide's rejected bookings (Guide only)
+// @route   GET /api/bookings/my-rejected
+export const getMyRejectedBookings = async (req, res) => {
+    try {
+        
+
+        const guideId = req.user._id;
+        
+        const rejectedBookings = await Booking.find({ 
+            guideId, 
+            status: "rejected" 
+        })
+            .populate("touristId", "fullName email")
+            .populate("itineraryId")
+            .sort({ rejectedAt: -1 });
+
+        res.json(rejectedBookings);
+        
+    } catch (error) {
+        console.error("Get rejected bookings error:", error);
         res.status(500).json({ message: "Server error fetching bookings" });
     }
 };
@@ -126,17 +171,20 @@ export const getMyAcceptedBookings = async (req, res) => {
 // @route   GET /api/bookings/history
 export const getBookingHistory = async (req, res) => {
     try {
+        
+
         const guideId = req.user._id;
         
         const completedBookings = await Booking.find({ 
             guideId, 
-            status: "completed" 
+            status: "completed" || "rejected"
         })
             .populate("touristId", "fullName email")
             .populate("itineraryId")
             .sort({ completedAt: -1 });
 
-        res.json(completedBookings);
+        res.json({completedBookings});
+
     } catch (error) {
         console.error("Get booking history error:", error);
         res.status(500).json({ message: "Server error fetching history" });
@@ -147,8 +195,10 @@ export const getBookingHistory = async (req, res) => {
 // @route   PUT /api/bookings/:id/accept
 export const acceptBooking = async (req, res) => {
     try {
+        
         const { id } = req.params;
         const guideId = req.user._id;
+        const guide = await User.findById(guideId);
 
         const booking = await Booking.findById(id);
         
@@ -160,31 +210,99 @@ export const acceptBooking = async (req, res) => {
             return res.status(400).json({ message: "Booking is no longer pending" });
         }
 
+        if (guide.activityStatus !== "active") {
+            return res.status(403).json({
+                message: "You must be active to accept a booking"
+            });
+        }
+
         booking.guideId = guideId;
         booking.status = "accepted";
         booking.acceptedAt = new Date();
         await booking.save();
 
+        await setGuideActivityStatus(guide, "working");
+
         const updatedBooking = await Booking.findById(id)
             .populate("touristId", "fullName email")
             .populate("itineraryId");
 
+        // 🔔 Emit to the tourist's room
+        io.to(booking.touristId.toString()).emit("booking:accepted", {
+            bookingId: booking._id,
+            message: `Your booking "${booking.tripDetails?.title}" has been accepted by the guide!`,
+        });
+
         res.json({
             message: "Booking accepted successfully",
             booking: updatedBooking,
+            activityStatus: guide.activityStatus,
         });
+
+
     } catch (error) {
         console.error("Accept booking error:", error);
         res.status(500).json({ message: "Server error accepting booking" });
     }
 };
 
+export const rejectBooking = async (req, res) => {
+    try {
+        
+        const { id } = req.params;
+        const guideId = req.user._id;
+        const guide = await User.findById(guideId);
+
+        const booking = await Booking.findById(id);
+        
+        if (!booking) {
+            return res.status(404).json({ message: "Booking not found" });
+        }
+
+        if (booking.status !== "pending") {
+            return res.status(400).json({ message: "Booking is no longer pending" });
+        }
+
+        if (booking.guideId.toString() !== guideId.toString()) {
+            return res.status(403).json({ message: "You can only reject your own bookings" });
+        }
+
+        booking.status = "rejected";
+        booking.rejectedAt = new Date();
+        await booking.save();
+
+        await setGuideActivityStatus(guide, "active");
+
+        const updatedBooking = await Booking.findById(id)
+            .populate("touristId", "fullName email")
+            .populate("itineraryId");
+
+        // emit to the tourist
+        io.to(booking.touristId.toString()).emit("booking:rejected", {
+            bookingId: booking._id,
+            message: "Your booking was rejected by the guide",
+        });
+
+        res.json({
+            message: "Booking rejected successfully",
+            booking: updatedBooking,
+            activityStatus: guide.activityStatus,
+        });
+        
+    } catch (error) {
+        console.error("Reject booking error:", error);
+        res.status(500).json({ message: "Server error rejecting booking" });
+    }
+}
+
 // @desc    Mark booking as complete (Guide only)
 // @route   PUT /api/bookings/:id/complete
 export const completeBooking = async (req, res) => {
     try {
+        
         const { id } = req.params;
         const guideId = req.user._id;
+        const guide = await User.findById(guideId);
 
         const booking = await Booking.findById(id);
         
@@ -204,10 +322,25 @@ export const completeBooking = async (req, res) => {
         booking.completedAt = new Date();
         await booking.save();
 
+        await setGuideActivityStatus(guide, "active");
+
+        const updatedBooking = await Booking.findById(id)
+            .populate("touristId", "fullName email")
+            .populate("itineraryId");
+
+        
+        io.to(booking.touristId.toString()).emit("booking:completed", {
+            bookingId: booking._id,
+            message: "Your booking has been completed by the guide",
+        });
+
         res.json({
             message: "Booking marked as complete",
             booking,
+            activityStatus: guide.activityStatus,
         });
+
+
     } catch (error) {
         console.error("Complete booking error:", error);
         res.status(500).json({ message: "Server error completing booking" });

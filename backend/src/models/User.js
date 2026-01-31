@@ -38,10 +38,19 @@ const userSchema = new mongoose.Schema(
             enum: [null, "pending", "approved", "rejected"],
             default: null,
         },
+        activityStatus: {
+            type: String,
+            enum: [null, "active", "inactive", "working"],
+            default: "inactive",
+        },
         contactNumber: {
             type: String,
             trim: true,
             default: null,
+        },
+        lastActivityAt: {
+            type: Date,
+            default: Date.now
         },
         accreditationUrl: {
             type: String,

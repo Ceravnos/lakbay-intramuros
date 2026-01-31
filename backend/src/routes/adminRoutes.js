@@ -2,6 +2,7 @@ import express from "express";
 import {
     getPendingGuides,
     getAllGuides,
+    getActiveGuides,
     getGuideById,
     approveGuide,
     rejectGuide,
@@ -24,5 +25,6 @@ router.get("/guides", getAllGuides);
 router.get("/guide/:id", getGuideById);
 router.put("/approve-guide/:id", approveGuide);
 router.put("/reject-guide/:id", rejectGuide);
+router.get("/active-guides", getActiveGuides);
 
 export default router;

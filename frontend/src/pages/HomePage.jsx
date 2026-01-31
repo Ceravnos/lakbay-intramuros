@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router'
 import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
 import { useAuth } from '../context/AuthContext'
+import { socket } from '../lib/socket'
 
 import Navbar from '../components/Navbar'
 import RateLimitedUI from '../components/RateLimitedUI'
@@ -15,34 +16,59 @@ const HomePage = () => {
     const [myBookings, setMyBookings] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchData();
-    }, [isAuthenticated, user]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            // Fetch user's itineraries
             const itinerariesRes = await api.get("/itineraries");
             setItineraries(itinerariesRes.data);
-            setIsRateLimited(false);
 
-            // Fetch user's bookings
-            try {
-                const bookingsRes = await api.get("/bookings/my-bookings");
-                setMyBookings(bookingsRes.data);
-            } catch (err) {
-                console.log("Could not fetch bookings");
-            }
+            const bookingsRes = await api.get("/bookings/my-bookings");
+            setMyBookings(bookingsRes.data);
+
+            setIsRateLimited(false);
         } catch (error) {
-            console.log("Error fetching data");
+            console.error(error);
             if (error.response?.status === 429) {
                 setIsRateLimited(true);
             }
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+    }, [isAuthenticated, user, fetchData]);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const handleAcceptedBooking = (data) => {
+            toast.success(data.message); // green toast for acceptance
+            fetchData();
+        };
+
+        const handleRejectedBooking = (data) => {
+            toast.error(data.message);
+            fetchData(); // refresh bookings
+        };
+
+        const handleCompletedBooking = (data) => {
+            toast.success(data.message);
+            fetchData();
+        }
+
+        socket.on("booking:accepted", handleAcceptedBooking);
+        socket.on("booking:rejected", handleRejectedBooking);
+        socket.on("booking:completed", handleCompletedBooking);
+
+        return () => {
+            socket.off("booking:accepted", handleAcceptedBooking);
+            socket.off("booking:rejected", handleRejectedBooking);
+            socket.off("booking:completed", handleCompletedBooking);
+        };
+    }, [user, fetchData]);
+
 
     const handleDeleteItinerary = async (id) => {
         if (!window.confirm("Are you sure you want to delete this itinerary?")) return;
@@ -56,6 +82,19 @@ const HomePage = () => {
         }
     };
 
+    const handleCancelBooking = async (id) => {
+        if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+        
+        try {
+            await api.put(`/bookings/${id}/cancel`);
+            toast.success("Booking cancelled");
+            setMyBookings(prev => prev.filter(item => item._id !== id));
+            fetchData();
+        } catch (error) {
+            toast.error("Failed to cancel booking");
+        }
+    };
+
     const formatDate = (date) => {
         return new Date(date).toLocaleDateString('en-US', {
             month: 'short',
@@ -66,9 +105,11 @@ const HomePage = () => {
 
     const getStatusColor = (status) => {
         switch (status) {
-            case 'pending': return 'bg-sand-100 text-sand-700 border-sand-300';
-            case 'accepted': return 'bg-sage-100 text-sage-700 border-sage-300';
-            case 'completed': return 'bg-stone-100 text-stone-600 border-stone-300';
+            case "pending": return 'bg-orange-500 text-white border-sand-300';
+            case "accepted": return 'bg-lime-600 text-white border-sage-300';
+            case "completed": return 'bg-stone-100 text-stone-600 border-stone-300';
+            case "cancelled": return 'bg-red-600 text-white border-stone-300';
+            case "rejected": return 'bg-red-800 text-white border-stone-300';
             default: return 'bg-stone-100 text-stone-600 border-stone-300';
         }
     };
@@ -113,16 +154,20 @@ const HomePage = () => {
                             {myBookings.map((booking) => (
                                 <div 
                                     key={booking._id} 
-                                    className="bg-white border border-stone-200 rounded-xl p-5 hover:shadow-md transition-shadow"
+                                    className="relative bg-white border border-stone-200 rounded-xl p-5 hover:shadow-md transition-shadow"
                                 >
                                     <div className="flex items-start justify-between mb-3">
                                         <h4 className="font-medium text-stone-800">
                                             {booking.tripDetails?.title}
                                         </h4>
-                                        <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(booking.status)}`}>
+                                        <span
+                                            className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(booking.status)}`}
+                                        >
                                             {booking.status}
+                                            {booking.status?.toLowerCase() === "accepted" && " - ongoing"}
                                         </span>
                                     </div>
+
                                     <div className="space-y-2 text-sm text-stone-500">
                                         <div className="flex items-center gap-2">
                                             <Calendar className="w-4 h-4" />
@@ -130,7 +175,8 @@ const HomePage = () => {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <Users className="w-4 h-4" />
-                                            {booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}
+                                            {booking.tripDetails?.numberOfPeople}{' '}
+                                            {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}
                                         </div>
                                         {booking.guideId && (
                                             <p className="text-sage-600">
@@ -138,6 +184,16 @@ const HomePage = () => {
                                             </p>
                                         )}
                                     </div>
+
+                                    {/* Cancel button */}
+                                    {booking.status === "pending" && (
+                                        <button
+                                            onClick={() => handleCancelBooking(booking._id)}
+                                            className="absolute bottom-4 right-4 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>

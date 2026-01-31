@@ -70,6 +70,7 @@ const BookingPage = () => {
             return;
         }
 
+
         setSubmitting(true);
         try {
             await api.post('/bookings', {
@@ -86,7 +87,15 @@ const BookingPage = () => {
             toast.success('Booking request sent!');
             navigate('/dashboard');
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to create booking');
+            // Detect if backend returned 409
+            if (error.response?.status === 409) {
+                toast.error(error.response.data.message);
+
+                // Trigger refresh function
+                fetchData(); // or whatever function you use to reload guides
+            } else {
+                toast.error(error.response?.data?.message || "Failed to create booking");
+            }
         } finally {
             setSubmitting(false);
         }
@@ -232,34 +241,41 @@ const BookingPage = () => {
                                 <div className="space-y-3">
                                     {availableGuides.map((guide) => (
                                         <button
-                                            key={guide._id}
-                                            onClick={() => setSelectedGuide(guide)}
-                                            className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
-                                                selectedGuide?._id === guide._id
-                                                    ? 'border-terracotta-500 bg-terracotta-50'
-                                                    : 'border-stone-200 hover:border-stone-300 bg-white'
-                                            }`}
-                                        >
-                                            <div className="w-12 h-12 bg-sage-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                                <span className="text-sage-700 font-semibold text-lg">
-                                                    {guide.fullName?.charAt(0).toUpperCase()}
-                                                </span>
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-stone-800">
-                                                    {guide.fullName}
+                                        key={guide._id}
+                                        onClick={() => setSelectedGuide(guide)}
+                                        className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
+                                            selectedGuide?._id === guide._id
+                                                ? 'border-terracotta-500 bg-terracotta-50'
+                                                : 'border-stone-200 hover:border-stone-300 bg-white'
+                                        }`}
+                                    >
+                                        <div className="w-12 h-12 bg-sage-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                            <span className="text-sage-700 font-semibold text-lg">
+                                                {guide.fullName?.charAt(0).toUpperCase()}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-medium text-stone-800">
+                                                {guide.fullName}
+                                            </p>
+                                            {guide.contactNumber && (
+                                                <p className="text-sm text-stone-500 flex items-center gap-1">
+                                                    <Phone className="w-3 h-3" />
+                                                    {guide.contactNumber}
                                                 </p>
-                                                {guide.contactNumber && (
-                                                    <p className="text-sm text-stone-500 flex items-center gap-1">
-                                                        <Phone className="w-3 h-3" />
-                                                        {guide.contactNumber}
-                                                    </p>
-                                                )}
-                                            </div>
+                                            )}
+                                        </div>
+
+                                        {/* RIGHT SIDE */}
+                                        <div className="flex items-center gap-2 ml-auto">
+                                            <span className="w-3 h-3 rounded-full bg-green-500" />
                                             {selectedGuide?._id === guide._id && (
                                                 <CheckCircle className="w-5 h-5 text-terracotta-600 flex-shrink-0" />
                                             )}
-                                        </button>
+                                        </div>
+                                    </button>
+
                                     ))}
                                 </div>
                             )}

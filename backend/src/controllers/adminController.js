@@ -46,6 +46,28 @@ export const getAllGuides = async (req, res) => {
     }
 };
 
+// @desc    Get all active guides
+// @route   GET /api/admin/active-guides
+export const getActiveGuides = async (req, res) => {
+    try {
+        const activeGuides = await User.find({ guideStatus: "approved" })
+            .select("-password")
+            .sort({ createdAt: -1 });
+
+        // Map to include status field for frontend compatibility
+        const mappedGuides = activeGuides.map(guide => ({
+            ...guide.toObject(),
+            status: guide.guideStatus,
+            accreditationFile: guide.accreditationUrl,
+        }));
+
+        res.json(mappedGuides);
+    } catch (error) {
+        console.error("Get active guides error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 // @desc    Get single guide application details
 // @route   GET /api/admin/guide/:id
 export const getGuideById = async (req, res) => {
@@ -143,12 +165,14 @@ export const getDashboardStats = async (req, res) => {
         const pendingGuides = await User.countDocuments({ guideStatus: "pending" });
         const approvedGuides = await User.countDocuments({ guideStatus: "approved" });
         const rejectedGuides = await User.countDocuments({ guideStatus: "rejected" });
+        const activeGuides = await User.countDocuments({ activityStatus: "active" });
 
         res.json({
             totalGuides,
             pendingGuides,
             approvedGuides,
             rejectedGuides,
+            activeGuides,
         });
     } catch (error) {
         console.error("Get dashboard stats error:", error);

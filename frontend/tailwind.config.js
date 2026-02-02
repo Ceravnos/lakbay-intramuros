@@ -49,6 +49,19 @@ export default {
       fontFamily: {
         serif: ['Georgia', 'Cambria', '"Times New Roman"', 'Times', 'serif'],
       },
+      keyframes: {
+        kenburns: {
+          '0%': { 
+            transform: 'scale(1) translate(var(--start-x), var(--start-y))' 
+          },
+          '100%': { 
+            transform: 'scale(1.25) translate(var(--end-x), var(--end-y))' 
+          },
+        },
+      },
+      animation: {
+        kenburns: 'kenburns 10s ease-in-out forwards',
+      },
     },
   },
   plugins: [daisyui],

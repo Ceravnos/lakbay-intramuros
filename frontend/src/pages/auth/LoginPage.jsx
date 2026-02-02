@@ -1,8 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { Eye, EyeOff, MapPin, Mail, Lock } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
+const bg1 = "/assets/login/login-bg-1.jpg";
+const bg2 = "/assets/login/login-bg-2.jpg";
+const bg3 = "/assets/login/login-bg-3.jpg";
+
+
+const backgrounds = [bg1, bg2, bg3];
+
+const generateMotion = () => {
+    const zoomStart = 1;
+    const zoomEnd = (Math.random() * 0.25 + 1.15).toFixed(2); // 1.15 → 1.40
+
+    const directions = [-10, -5, 0, 5, 10];
+    const x = directions[Math.floor(Math.random() * directions.length)];
+    const y = directions[Math.floor(Math.random() * directions.length)];
+
+    return {
+        "--start-scale": zoomStart,
+        "--end-scale": zoomEnd,
+        "--start-x": "0%",
+        "--start-y": "0%",
+        "--end-x": `${x}%`,
+        "--end-y": `${y}%`,
+    };
+};
 
 const LoginPage = () => {
     const [email, setEmail] = useState("");
@@ -11,6 +35,10 @@ const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
+    const [motions, setMotions] = useState(
+        backgrounds.map(() => generateMotion())
+    );
+
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -38,10 +66,53 @@ const LoginPage = () => {
         }
     };
 
+
+    //Slideshow effect for Ken Burns
+    const [bgIndex, setBgIndex] = useState(
+        Math.floor(Math.random() * backgrounds.length)
+    );
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setBgIndex((prev) => {
+            const next = (prev + 1) % backgrounds.length;
+
+            setMotions((prevMotions) =>
+                prevMotions.map((motion, i) =>
+                i === next ? generateMotion() : motion
+                )
+            );
+
+            return next;
+            });
+        }, 8000);
+
+        return () => clearInterval(interval);
+    }, []);
+
+
     return (
         <div className="min-h-screen flex">
             {/* Left Side - Decorative */}
             <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-amber-800 via-amber-900 to-stone-900 relative overflow-hidden">
+                {backgrounds.map((bg, index) => (
+                    <img
+                        key={index}
+                        src={bg}
+                        alt=""
+                        style={motions[index]}
+                        className={`
+                            absolute inset-0 h-full w-full object-cover
+                            motion-safe:animate-kenburns
+                            transition-opacity duration-[2000ms] ease-in-out
+                            ${index === bgIndex ? "opacity-75" : "opacity-0"}
+                        `}
+                    />
+                ))}
+
+                <div className="absolute inset-0 bg-stone-900/60" />
+
+
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d4a574%22 fill-opacity=%220.08%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-30"></div>
                 <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-center">
                     <MapPin className="w-20 h-20 text-amber-400 mb-6" />

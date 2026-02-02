@@ -168,16 +168,26 @@ const IntramurosMap = ({
                     position={{ lat: selectedMarker.lat, lng: selectedMarker.lng }}
                     onCloseClick={() => setSelectedMarker(null)}
                 >
-                    <div className="p-1 min-w-[150px]">
+                    <div className="w-64">
+                        {selectedMarker.image && (
+                            <img
+                                src={selectedMarker.image}
+                                alt={selectedMarker.name}
+                                className="w-full h-28 object-cover rounded-md mb-2"
+                            />
+                        )}
+
                         <h3 className="font-semibold text-stone-800 text-sm">
                             {selectedMarker.name}
                         </h3>
-                        {selectedMarker.address && (
-                            <p className="text-stone-500 text-xs mt-1">
-                                {selectedMarker.address}
+
+                        {selectedMarker.description && (
+                            <p className="text-stone-500 text-xs mt-1 leading-snug">
+                                {selectedMarker.description}
                             </p>
                         )}
                     </div>
+
                 </InfoWindow>
             )}
         </GoogleMap>

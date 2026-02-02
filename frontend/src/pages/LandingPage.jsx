@@ -128,14 +128,18 @@ const LandingPage = () => {
                                 name: l.name,
                                 lat: l.lat,
                                 lng: l.lng,
-                                address: l.description,
+                                address: l.address,
+                                description: l.description,
+                                image: l.image,
                             }))
                             : filteredLocations.map(l => ({
                                 id: l.id,
                                 name: l.name,
                                 lat: l.lat,
                                 lng: l.lng,
-                                address: l.description,
+                                address: l.address,
+                                description: l.description,
+                                image: l.image,
                             }))
                         }
                         onMarkerClick={(marker) => {

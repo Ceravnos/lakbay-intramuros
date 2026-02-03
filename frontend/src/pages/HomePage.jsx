@@ -103,6 +103,14 @@ const HomePage = () => {
         });
     };
 
+    const formatTime = (date) => {
+        return new Date(date).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        })
+    };
+
     const getStatusColor = (status) => {
         switch (status) {
             case "pending": return 'bg-orange-500 text-white border-sand-300';
@@ -172,6 +180,10 @@ const HomePage = () => {
                                         <div className="flex items-center gap-2">
                                             <Calendar className="w-4 h-4" />
                                             {formatDate(booking.tripDetails?.preferredDate)}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="w-4 h-4" />
+                                            {formatTime(booking.tripDetails?.preferredDate)}
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <Users className="w-4 h-4" />

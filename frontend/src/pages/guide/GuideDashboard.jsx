@@ -202,6 +202,14 @@ const GuideDashboard = () => {
         });
     };
 
+    const formatTime = (date) => {
+        return new Date(date).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        })
+    };
+
     const stats = {
         pending: pendingBookings.length,
         active: acceptedBookings.length,
@@ -470,8 +478,16 @@ const GuideDashboard = () => {
                                                                     <span>{booking.touristId?.email}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
+                                                                    <Phone className="w-4 h-4 text-stone-400" />
+                                                                    <span>{booking.touristId?.phoneNumber}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
                                                                     <Calendar className="w-4 h-4 text-stone-400" />
                                                                     <span>{formatDate(booking.tripDetails?.preferredDate)}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Clock className="w-4 h-4 text-stone-400" />
+                                                                    <span>{formatTime(booking.tripDetails?.preferredDate)}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <Users className="w-4 h-4 text-stone-400" />
@@ -555,8 +571,16 @@ const GuideDashboard = () => {
                                                                     <span>{booking.touristId?.email}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
+                                                                    <Phone className="w-4 h-4 text-stone-400" />
+                                                                    <span>{booking.touristId?.phoneNumber}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
                                                                     <Calendar className="w-4 h-4 text-stone-400" />
                                                                     <span>{formatDate(booking.tripDetails?.preferredDate)}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Clock className="w-4 h-4 text-stone-400" />
+                                                                    <span>{formatTime(booking.tripDetails?.preferredDate)}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <Users className="w-4 h-4 text-stone-400" />
@@ -602,6 +626,7 @@ const GuideDashboard = () => {
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Destination</th>
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Tourist</th>
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Date</th>
+                                                            <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Time</th>
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Group Size</th>
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Status</th>
                                                             <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Completed at</th>
@@ -620,6 +645,7 @@ const GuideDashboard = () => {
                                                                 </td>
                                                                 <td className="py-3 px-4 text-stone-600">{booking.touristId?.fullName}</td>
                                                                 <td className="py-3 px-4 text-stone-600">{formatDate(booking.tripDetails?.preferredDate)}</td>
+                                                                <td className="py-3 px-4 text-stone-600">{formatTime(booking.tripDetails?.preferredDate)}</td>
                                                                 <td className="py-3 px-4 text-stone-600">{booking.tripDetails?.numberOfPeople}</td>
                                                                 <td className={`py-3 px-4 text-sm ${
                                                                     booking.displayStatus === "completed" ? "text-stone-500" : "text-red-600"
@@ -627,7 +653,7 @@ const GuideDashboard = () => {
                                                                     {booking.displayStatus === "completed" ? "Completed" : "Rejected"}
                                                                 </td>
                                                                 <td className="py-3 px-4 text-sm text-stone-500">
-                                                                    {booking.displayStatus === "completed" ? formatDate(booking.completedAt) : ""}
+                                                                    {booking.displayStatus === "completed" ? formatDate(booking.completedAt) + ", " + formatTime(booking.completedAt) : ""}
                                                                 </td>
                                                             </tr>
                                                         ))}

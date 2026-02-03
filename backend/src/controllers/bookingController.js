@@ -107,7 +107,7 @@ export const getPendingBookings = async (req, res) => {
         
 
         const pendingBookings = await Booking.find({ status: "pending" })
-            .populate("touristId", "fullName email")
+            .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId")
             .sort({ createdAt: -1 });
 
@@ -131,7 +131,7 @@ export const getMyAcceptedBookings = async (req, res) => {
             guideId, 
             status: "accepted" 
         })
-            .populate("touristId", "fullName email")
+            .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId")
             .sort({ acceptedAt: -1 });
 
@@ -354,7 +354,7 @@ export const getMyBookings = async (req, res) => {
         const touristId = req.user._id;
         
         const bookings = await Booking.find({ touristId })
-            .populate("guideId", "fullName email contactNumber")
+            .populate("guideId", "fullName email")
             .populate("itineraryId")
             .sort({ createdAt: -1 });
 

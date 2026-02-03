@@ -20,6 +20,7 @@ const BookingPage = () => {
     const [submitting, setSubmitting] = useState(false);
     const [bookingDetails, setBookingDetails] = useState({
         preferredDate: '',
+        preferredTime: '',
         numberOfPeople: 1,
         notes: '',
     });
@@ -60,7 +61,7 @@ const BookingPage = () => {
     };
 
     const handleSubmitBooking = async () => {
-        if (!bookingDetails.preferredDate) {
+        if (!bookingDetails.preferredDate || !bookingDetails.preferredTime) {
             toast.error('Please select a preferred date');
             return;
         }
@@ -70,6 +71,9 @@ const BookingPage = () => {
             return;
         }
 
+        const preferredDateTime = new Date(
+            `${bookingDetails.preferredDate}T${bookingDetails.preferredTime}`
+        );
 
         setSubmitting(true);
         try {
@@ -78,7 +82,7 @@ const BookingPage = () => {
                 guideId: selectedGuide._id,
                 tripDetails: {
                     title: itinerary.name,
-                    preferredDate: bookingDetails.preferredDate,
+                    preferredDate: preferredDateTime,
                     numberOfPeople: bookingDetails.numberOfPeople,
                     notes: bookingDetails.notes,
                 },
@@ -192,6 +196,25 @@ const BookingPage = () => {
                                             value={bookingDetails.preferredDate}
                                             onChange={(e) => setBookingDetails(prev => ({ ...prev, preferredDate: e.target.value }))}
                                             min={new Date().toISOString().split('T')[0]}
+                                            className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta-500"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-stone-700 mb-2">
+                                        Preferred Time
+                                    </label>
+                                    <div className="relative">
+                                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                        <input
+                                            type="time"
+                                            value={bookingDetails.preferredTime}
+                                            onChange={(e) =>
+                                                setBookingDetails(prev => ({
+                                                    ...prev,
+                                                    preferredTime: e.target.value,
+                                                }))
+                                            }
                                             className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta-500"
                                         />
                                     </div>
@@ -321,7 +344,7 @@ const BookingPage = () => {
                             <div className="border-t border-stone-200 mt-4 pt-4">
                                 <button
                                     onClick={handleSubmitBooking}
-                                    disabled={submitting || !selectedGuide || !bookingDetails.preferredDate}
+                                    disabled={submitting || !selectedGuide || !bookingDetails.preferredDate || !bookingDetails.preferredTime}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {submitting ? (

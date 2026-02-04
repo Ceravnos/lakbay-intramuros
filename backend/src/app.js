@@ -26,13 +26,29 @@ const PORT = process.env.PORT || 4000
 const __dirname = path.resolve()
 
 // *MIDDLEWARE*
-if(process.env.NODE_ENV !== "production"){
-    app.use(
-        cors({
-            origin: "http://localhost:5173",
-        })
-    );
-}
+// CORS configuration for both development and production
+const allowedOrigins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    process.env.FRONTEND_URL,
+    "https://lakbay-intramuros.onrender.com"
+].filter(Boolean);
+
+app.use(
+    cors({
+        origin: function (origin, callback) {
+            // Allow requests with no origin (mobile apps, curl, etc.)
+            if (!origin) return callback(null, true);
+            
+            if (allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error("Not allowed by CORS"));
+            }
+        },
+        credentials: true,
+    })
+);
 
 app.use(express.json()) // Parse the JSON bodies: req.body
 app.use(rateLimiter)
@@ -65,7 +81,7 @@ const server = http.createServer(app);
 
 export const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173",
+        origin: allowedOrigins,
         credentials: true,
     },
 });

@@ -107,7 +107,7 @@ export const getPendingBookings = async (req, res) => {
         
 
         const pendingBookings = await Booking.find({ status: "pending" })
-            .populate("touristId", "fullName email")
+            .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId")
             .sort({ createdAt: -1 });
 
@@ -131,7 +131,7 @@ export const getMyAcceptedBookings = async (req, res) => {
             guideId, 
             status: "accepted" 
         })
-            .populate("touristId", "fullName email")
+            .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId")
             .sort({ acceptedAt: -1 });
 
@@ -321,6 +321,7 @@ export const completeBooking = async (req, res) => {
         booking.status = "completed";
         booking.completedAt = new Date();
         await booking.save();
+        await booking.populate("guideId", "fullName");
 
         await setGuideActivityStatus(guide, "active");
 
@@ -330,8 +331,8 @@ export const completeBooking = async (req, res) => {
 
         
         io.to(booking.touristId.toString()).emit("booking:completed", {
-            bookingId: booking._id,
             message: "Your booking has been completed by the guide",
+            booking
         });
 
         res.json({
@@ -354,7 +355,7 @@ export const getMyBookings = async (req, res) => {
         const touristId = req.user._id;
         
         const bookings = await Booking.find({ touristId })
-            .populate("guideId", "fullName email contactNumber")
+            .populate("guideId", "fullName email")
             .populate("itineraryId")
             .sort({ createdAt: -1 });
 
@@ -421,3 +422,5 @@ export const getBookingStats = async (req, res) => {
         res.status(500).json({ message: "Server error fetching stats" });
     }
 };
+
+

@@ -11,7 +11,7 @@ router.get("/guides", protect, async (req, res) => {
             role: "guide",
             guideStatus: "approved",
             activityStatus: "active",
-        }).select("fullName email contactNumber");
+        }).select("fullName email contactNumber totalStars totalRatings");
 
         res.json(guides);
     } catch (error) {

@@ -20,6 +20,7 @@ const BookingPage = () => {
     const [submitting, setSubmitting] = useState(false);
     const [bookingDetails, setBookingDetails] = useState({
         preferredDate: '',
+        preferredTime: '',
         numberOfPeople: 1,
         notes: '',
     });
@@ -60,7 +61,7 @@ const BookingPage = () => {
     };
 
     const handleSubmitBooking = async () => {
-        if (!bookingDetails.preferredDate) {
+        if (!bookingDetails.preferredDate || !bookingDetails.preferredTime) {
             toast.error('Please select a preferred date');
             return;
         }
@@ -70,6 +71,9 @@ const BookingPage = () => {
             return;
         }
 
+        const preferredDateTime = new Date(
+            `${bookingDetails.preferredDate}T${bookingDetails.preferredTime}`
+        );
 
         setSubmitting(true);
         try {
@@ -78,7 +82,7 @@ const BookingPage = () => {
                 guideId: selectedGuide._id,
                 tripDetails: {
                     title: itinerary.name,
-                    preferredDate: bookingDetails.preferredDate,
+                    preferredDate: preferredDateTime,
                     numberOfPeople: bookingDetails.numberOfPeople,
                     notes: bookingDetails.notes,
                 },
@@ -198,6 +202,25 @@ const BookingPage = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-stone-700 mb-2">
+                                        Preferred Time
+                                    </label>
+                                    <div className="relative">
+                                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                        <input
+                                            type="time"
+                                            value={bookingDetails.preferredTime}
+                                            onChange={(e) =>
+                                                setBookingDetails(prev => ({
+                                                    ...prev,
+                                                    preferredTime: e.target.value,
+                                                }))
+                                            }
+                                            className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta-500"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-stone-700 mb-2">
                                         Number of People
                                     </label>
                                     <div className="relative">
@@ -256,8 +279,17 @@ const BookingPage = () => {
                                         </div>
 
                                         <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-stone-800">
-                                                {guide.fullName}
+                                            <p className="flex items-center gap-2 font-medium text-stone-800">
+                                                <span>{guide.fullName}</span>
+                                                {guide.totalStars > 0 && guide.totalRatings > 0 && (
+                                                    <span className="flex items-center gap-1 text-sm text-stone-600">
+                                                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                                                        <span>{(guide.totalStars / guide.totalRatings).toFixed(1)}</span>
+                                                        <span className="text-stone-400">
+                                                            ({guide.totalRatings})
+                                                        </span>
+                                                    </span>
+                                                )}
                                             </p>
                                             {guide.contactNumber && (
                                                 <p className="text-sm text-stone-500 flex items-center gap-1">
@@ -321,7 +353,7 @@ const BookingPage = () => {
                             <div className="border-t border-stone-200 mt-4 pt-4">
                                 <button
                                     onClick={handleSubmitBooking}
-                                    disabled={submitting || !selectedGuide || !bookingDetails.preferredDate}
+                                    disabled={submitting || !selectedGuide || !bookingDetails.preferredDate || !bookingDetails.preferredTime}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {submitting ? (

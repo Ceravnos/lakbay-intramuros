@@ -9,12 +9,74 @@ import { socket } from '../lib/socket'
 import Navbar from '../components/Navbar'
 import RateLimitedUI from '../components/RateLimitedUI'
 
+// ⭐ Rating Modal Component
+const RatingModal = ({ booking, onClose, onSubmit }) => {
+    const [rating, setRating] = useState(0);
+    const [hover, setHover] = useState(0);
+
+    if (!booking) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-sm text-center">
+                <h3 className="text-lg font-serif font-semibold text-stone-800 mb-2">
+                    Rate your guide
+                </h3>
+
+                <p className="text-sm text-stone-500 mb-4">
+                    How was your experience with {booking.guideId?.fullName}?
+                </p>
+
+                <div className="flex justify-center gap-2 mb-6">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                            key={star}
+                            onMouseEnter={() => setHover(star)}
+                            onMouseLeave={() => setHover(0)}
+                            onClick={() => setRating(star)}
+                            className="text-3xl"
+                        >
+                            <span className={
+                                star <= (hover || rating)
+                                    ? "text-yellow-400"
+                                    : "text-stone-300"
+                            }>
+                                ★
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 px-4 py-2 text-sm border rounded-lg text-stone-600 hover:bg-stone-50"
+                    >
+                        Skip
+                    </button>
+                    <button
+                        disabled={rating === 0}
+                        onClick={() => onSubmit(rating)}
+                        className="flex-1 px-4 py-2 text-sm bg-terracotta-600 text-white rounded-lg hover:bg-terracotta-700 disabled:opacity-50"
+                    >
+                        Submit
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 const HomePage = () => {
     const { user, isAuthenticated, isGuideMode } = useAuth();
     const [isRateLimited, setIsRateLimited] = useState(false);
     const [itineraries, setItineraries] = useState([]);
     const [myBookings, setMyBookings] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showRatingPrompt, setShowRatingPrompt] = useState(false);
+    const [ratingBooking, setRatingBooking] = useState(null);
+
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -36,6 +98,23 @@ const HomePage = () => {
         }
     }, []);
 
+    const submitRating = async (rating) => {
+        try {
+            await api.post(`/ratings`, {
+                bookingId: ratingBooking._id,
+                guideId: ratingBooking.guideId._id,
+                rating
+            });
+
+            toast.success("Thanks for your feedback!");
+            setShowRatingPrompt(false);
+            setRatingBooking(null);
+        } catch (error) {
+            toast.error("Failed to submit rating");
+        }
+    };
+
+
     useEffect(() => {
         fetchData();
     }, [isAuthenticated, user, fetchData]);
@@ -56,6 +135,9 @@ const HomePage = () => {
         const handleCompletedBooking = (data) => {
             toast.success(data.message);
             fetchData();
+            //activate review prompt here
+            setRatingBooking(data.booking);
+            setShowRatingPrompt(true);
         }
 
         socket.on("booking:accepted", handleAcceptedBooking);
@@ -101,6 +183,14 @@ const HomePage = () => {
             day: 'numeric',
             year: 'numeric'
         });
+    };
+
+    const formatTime = (date) => {
+        return new Date(date).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        })
     };
 
     const getStatusColor = (status) => {
@@ -172,6 +262,10 @@ const HomePage = () => {
                                         <div className="flex items-center gap-2">
                                             <Calendar className="w-4 h-4" />
                                             {formatDate(booking.tripDetails?.preferredDate)}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="w-4 h-4" />
+                                            {formatTime(booking.tripDetails?.preferredDate)}
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <Users className="w-4 h-4" />
@@ -289,6 +383,17 @@ const HomePage = () => {
                     )}
                 </section>
             </div>
+        {showRatingPrompt && (
+            <RatingModal
+                booking={ratingBooking}
+                onClose={() => {
+                    setShowRatingPrompt(false);
+                    setRatingBooking(null);
+                }}
+                onSubmit={submitRating}
+            />
+        )}
+
         </div>
     );
 };

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { 
     User, Mail, Phone, FileText, Upload, CheckCircle, 
-    Clock, XCircle, Loader2, Shield, Compass, ToggleLeft, ToggleRight, MapPin
+    Clock, XCircle, Loader2, Shield, Compass, ToggleLeft, ToggleRight, MapPin, Star
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
@@ -20,6 +20,12 @@ const ProfilePage = () => {
         accreditationFileName: '',
     });
     const [submitting, setSubmitting] = useState(false);
+
+    const averageRating =
+    user?.totalRatings > 0
+        ? (user.totalStars / user.totalRatings).toFixed(1)
+        : null;
+
 
     const handleFileChange = (e) => {
         const file = e.target.files[0];
@@ -112,9 +118,24 @@ const ProfilePage = () => {
                             </span>
                         </div>
                         <div className="flex-1">
-                            <h1 className="text-2xl font-serif font-semibold text-stone-800">
-                                {user?.fullName}
-                            </h1>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h1 className="text-2xl font-serif font-semibold text-stone-800">
+                                    {user?.fullName}
+                                </h1>
+                                {isApprovedGuide && (
+                                    <div className="flex items-center gap-1 text-sm text-stone-600">
+                                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                                        <span className="font-medium">
+                                            {averageRating ?? "New"}
+                                        </span>
+                                        {user?.totalRatings > 0 && (
+                                            <span className="text-stone-400">
+                                                ({user.totalRatings})
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             <p className="text-stone-500 flex items-center gap-2 mt-1">
                                 <Mail className="w-4 h-4" />
                                 {user?.email}
@@ -387,10 +408,14 @@ const ProfilePage = () => {
                             <span className="text-stone-800 font-medium">{user?.email}</span>
                         </div>
                         <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                            <span className="text-stone-500">Phone</span>
+                            <span className="text-stone-800 font-medium">{user?.phoneNumber}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-3 border-b border-stone-100">
                             <span className="text-stone-500">Account Type</span>
                             <span className="text-stone-800 font-medium capitalize">{user?.role}</span>
                         </div>
-                        <div className="flex items-center justify-between py-3">
+                        <div className="flex items-center justify-between py-3 border-b border-stone-100">
                             <span className="text-stone-500">Member Since</span>
                             <span className="text-stone-800 font-medium">
                                 {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', {
@@ -400,6 +425,34 @@ const ProfilePage = () => {
                                 }) : 'N/A'}
                             </span>
                         </div>
+                        {isApprovedGuide && (
+                            <>
+                                <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                                    <span className="text-stone-500">Total Stars</span>
+                                    <span className="flex items-center gap-1 text-stone-800 font-medium">
+                                        {user?.totalStars}
+                                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                                    <span className="text-stone-500">Total Ratings</span>
+                                    <span className="flex items-center gap-1 text-stone-800 font-medium">
+                                        {user?.totalRatings}
+                                        <User className="w-4 h-4 fill-stone-500 text-stone-500" />
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center justify-between py-3">
+                                    <span className="text-stone-500">Current Rating</span>
+                                    <span className="text-stone-800 font-medium">
+                                        {user?.totalRatings > 0
+                                            ? (user.totalStars / user.totalRatings).toFixed(1)
+                                            : "—"}
+                                    </span>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

@@ -2,6 +2,10 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import path from "path"
+import http from "http";
+import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
+import User from "./models/User.js";
 
 import travelRoutes from "./routes/travelRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -9,8 +13,11 @@ import adminRoutes from "./routes/adminRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
 import itineraryRoutes from "./routes/itineraryRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import ratingRoutes from "./routes/ratingRoutes.js";
+
 import { connectDB } from "./config/db.js";
 import rateLimiter from "./middleware/rateLimiter.js";
+import { startGuideInactivityWatcher } from "./services/guideInactivityWatcher.js";
 
 dotenv.config();
 
@@ -19,13 +26,29 @@ const PORT = process.env.PORT || 4000
 const __dirname = path.resolve()
 
 // *MIDDLEWARE*
-if(process.env.NODE_ENV !== "production"){
-    app.use(
-        cors({
-            origin: "http://localhost:5173",
-        })
-    );
-}
+// CORS configuration for both development and production
+const allowedOrigins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    process.env.FRONTEND_URL,
+    "https://lakbay-intramuros.onrender.com"
+].filter(Boolean);
+
+app.use(
+    cors({
+        origin: function (origin, callback) {
+            // Allow requests with no origin (mobile apps, curl, etc.)
+            if (!origin) return callback(null, true);
+            
+            if (allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error("Not allowed by CORS"));
+            }
+        },
+        credentials: true,
+    })
+);
 
 app.use(express.json()) // Parse the JSON bodies: req.body
 app.use(rateLimiter)
@@ -42,6 +65,8 @@ app.use("/api/admin", adminRoutes)
 app.use("/api/bookings", bookingRoutes)
 app.use("/api/itineraries", itineraryRoutes)
 app.use("/api/users", userRoutes)
+app.use("/api/ratings", ratingRoutes);
+
 
 // *FOR PRODUCTION ONLY*
 if(process.env.NODE_ENV === "production") {
@@ -52,13 +77,54 @@ if(process.env.NODE_ENV === "production") {
     })
 }
 
-// *DATABASE CONNECTION*
-// Connect to DB before starting the PORT
+const server = http.createServer(app);
+
+export const io = new Server(server, {
+    cors: {
+        origin: allowedOrigins,
+        credentials: true,
+    },
+});
+
+/* ======================
+   SOCKET AUTH MIDDLEWARE
+====================== */
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error("Unauthorized"));
+
+    try {
+        const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+        // Assign the userId properly
+        socket.userId = payload.userId; // ✅ THIS IS KEY
+
+        next();
+    } catch (err) {
+        console.error("Socket auth error:", err);
+        next(new Error("Unauthorized"));
+    }
+});
+
+
+
+io.on("connection", (socket) => {
+    console.log("Socket connected:", socket.userId);
+    // Join a room for this user
+    socket.join(socket.userId);
+});
+
+
+/* ======================
+   START SERVER
+====================== */
 connectDB().then(() => {
-    app.listen(PORT, () => {
-        console.log("[app.js] Server started on PORT: 4000");
+    server.listen(PORT, () => {
+        console.log(`[app.js] Server started on PORT: ${PORT}`);
     });
 });
+
+startGuideInactivityWatcher();
 
 
  

@@ -10,7 +10,8 @@ router.get("/guides", protect, async (req, res) => {
         const guides = await User.find({
             role: "guide",
             guideStatus: "approved",
-        }).select("fullName email contactNumber");
+            activityStatus: "active",
+        }).select("fullName email contactNumber totalStars totalRatings");
 
         res.json(guides);
     } catch (error) {

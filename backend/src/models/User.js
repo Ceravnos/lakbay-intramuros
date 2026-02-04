@@ -20,6 +20,13 @@ const userSchema = new mongoose.Schema(
             required: true,
             trim: true,
         },
+        phoneNumber: {
+            type: String,
+            trim: true,
+            required: true,
+            minlength: 11,
+            maxlength: 11,
+        },
         role: {
             type: String,
             enum: ["tourist", "guide", "admin"],
@@ -31,10 +38,19 @@ const userSchema = new mongoose.Schema(
             enum: [null, "pending", "approved", "rejected"],
             default: null,
         },
+        activityStatus: {
+            type: String,
+            enum: [null, "active", "inactive", "working"],
+            default: "inactive",
+        },
         contactNumber: {
             type: String,
             trim: true,
             default: null,
+        },
+        lastActivityAt: {
+            type: Date,
+            default: Date.now
         },
         accreditationUrl: {
             type: String,
@@ -75,6 +91,15 @@ const userSchema = new mongoose.Schema(
             type: Date,
             default: null,
         },
+        
+        totalStars: {
+            type: Number,
+            default: 0,
+        },
+        totalRatings: {
+            type: Number,
+            default: 0,
+        }
     },
     { timestamps: true }
 );

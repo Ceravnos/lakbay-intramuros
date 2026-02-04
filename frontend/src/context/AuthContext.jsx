@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import api from "../lib/axios";
+import { socket } from "../lib/socket";
+import toast from "react-hot-toast";
 
 const AuthContext = createContext(null);
 
@@ -35,6 +37,24 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
     };
 
+        /* ======================
+       SOCKET CONNECT / DISCONNECT
+    ====================== */
+    useEffect(() => {
+        if (!user) return;
+
+        // attach fresh token (important after login/register)
+        // Always refresh the token before connecting
+        socket.auth = { token: localStorage.getItem("token") };
+
+        if (!socket.connected) socket.connect();
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [user]);
+
+
     // Unified login
     const login = async (email, password) => {
         const res = await api.post("/auth/login", { email, password });
@@ -46,8 +66,8 @@ export const AuthProvider = ({ children }) => {
     };
 
     // Unified register
-    const register = async (email, password, fullName) => {
-        const res = await api.post("/auth/register", { email, password, fullName });
+    const register = async (email, password, fullName, phoneNumber) => {
+        const res = await api.post("/auth/register", { email, password, fullName, phoneNumber });
         const { token, ...userData } = res.data;
         localStorage.setItem("token", token);
         api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -84,6 +104,24 @@ export const AuthProvider = ({ children }) => {
         return res.data;
     };
 
+    //Toggle active status
+    const toggleActivityStatus = async () => {
+        if (user.activityStatus === "working") {
+            toast.error("You are currently working on a booking");
+            return;
+        }
+
+        const res = await api.put("/auth/toggle-activity-status");
+
+        setUser((prev) => ({
+            ...prev,
+            activityStatus: res.data.activityStatus,
+        }));
+
+        return res.data;
+    };
+
+
     // Silent refresh user data from server (useful after admin approval)
     const refreshUser = async () => {
         try {
@@ -98,6 +136,7 @@ export const AuthProvider = ({ children }) => {
 
     // Logout
     const logout = () => {
+        socket.disconnect();
         localStorage.removeItem("token");
         delete api.defaults.headers.common["Authorization"];
         setUser(null);
@@ -129,6 +168,7 @@ export const AuthProvider = ({ children }) => {
         loginAdmin,
         applyForGuide,
         toggleGuideMode,
+        toggleActivityStatus,
         refreshUser,
         logout,
         forgotPassword,

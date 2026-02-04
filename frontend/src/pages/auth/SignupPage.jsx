@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, MapPin, Mail, Lock, User } from "lucide-react";
+import { Eye, EyeOff, MapPin, Mail, Lock, User, Phone, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 
 const SignupPage = () => {
     const [formData, setFormData] = useState({
         fullName: "",
+        phoneNumber: "",
         email: "",
         password: "",
         confirmPassword: "",
@@ -14,35 +15,92 @@ const SignupPage = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [errors, setErrors] = useState({});
     const { register } = useAuth();
     const navigate = useNavigate();
 
+    // Email validation regex
+    const isValidEmail = (email) => {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    };
+
+    // Validate all form fields
+    const validateForm = () => {
+        const newErrors = {};
+        const { fullName, phoneNumber, email, password, confirmPassword } = formData;
+
+        // Full Name validation
+        if (!fullName.trim()) {
+            newErrors.fullName = "Full name is required";
+        } else if (fullName.trim().length < 2) {
+            newErrors.fullName = "Full name must be at least 2 characters";
+        }
+
+        // Phone Number validation
+        if (!phoneNumber.trim()) {
+            newErrors.phoneNumber = "Phone number is required";
+        } else if (!/^[0-9]+$/.test(phoneNumber)) {
+            newErrors.phoneNumber = "Phone number must contain only numbers";
+        } else if (phoneNumber.length !== 11) {
+            newErrors.phoneNumber = "Phone number must be 11 digits";
+        }
+
+        // Email validation
+        if (!email.trim()) {
+            newErrors.email = "Email is required";
+        } else if (!isValidEmail(email)) {
+            newErrors.email = "Please enter a valid email address";
+        }
+
+        // Password validation
+        if (!password) {
+            newErrors.password = "Password is required";
+        } else if (password.length < 6) {
+            newErrors.password = "Password must be at least 6 characters";
+        }
+
+        // Confirm Password validation
+        if (!confirmPassword) {
+            newErrors.confirmPassword = "Please confirm your password";
+        } else if (password !== confirmPassword) {
+            newErrors.confirmPassword = "Passwords do not match";
+        }
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
+    // Handle input change and clear specific error
     const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const { name, value } = e.target;
+        setFormData({ ...formData, [name]: value });
+        
+        // Clear error for this field when user starts typing
+        if (errors[name]) {
+            setErrors(prev => ({ ...prev, [name]: "" }));
+        }
+
+        // Special case: clear confirmPassword error if passwords now match
+        if (name === "password" && formData.confirmPassword && value === formData.confirmPassword) {
+            setErrors(prev => ({ ...prev, confirmPassword: "" }));
+        }
+        if (name === "confirmPassword" && formData.password && value === formData.password) {
+            setErrors(prev => ({ ...prev, confirmPassword: "" }));
+        }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const { fullName, email, password, confirmPassword } = formData;
-
-        if (!fullName || !email || !password || !confirmPassword) {
-            toast.error("Please fill in all fields");
+        
+        if (!validateForm()) {
             return;
         }
 
-        if (password.length < 6) {
-            toast.error("Password must be at least 6 characters");
-            return;
-        }
-
-        if (password !== confirmPassword) {
-            toast.error("Passwords do not match");
-            return;
-        }
+        const { fullName, phoneNumber, email, password } = formData;
 
         setLoading(true);
         try {
-            await register(email, password, fullName);
+            await register(email, password, fullName, phoneNumber);
             toast.success("Account created successfully!");
             navigate("/");
         } catch (error) {
@@ -83,8 +141,17 @@ const SignupPage = () => {
                         <h1 className="text-2xl font-serif font-bold text-stone-800">Lakbay Intramuros</h1>
                     </div>
 
-                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-200/50 p-8">
-                        <div className="text-center mb-8">
+                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-200/50 p-6 sm:p-8">
+                        {/* Back to Home Link */}
+                        <Link 
+                            to="/" 
+                            className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 mb-6 transition-colors"
+                        >
+                            <ArrowLeft className="w-4 h-4" />
+                            Back to Home
+                        </Link>
+
+                        <div className="text-center mb-6">
                             <h2 className="text-2xl font-serif font-bold text-stone-800">Create Account</h2>
                             <p className="text-stone-600 mt-2">Join us and start exploring</p>
                         </div>
@@ -95,16 +162,54 @@ const SignupPage = () => {
                                     Full Name
                                 </label>
                                 <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                    <User className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.fullName ? 'text-red-400' : 'text-stone-400'}`} />
                                     <input
                                         type="text"
                                         name="fullName"
                                         value={formData.fullName}
                                         onChange={handleChange}
-                                        className="w-full pl-11 pr-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
+                                        className={`w-full pl-11 pr-4 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                                            errors.fullName 
+                                                ? 'border-red-300 focus:ring-red-500' 
+                                                : 'border-amber-200 focus:ring-amber-500'
+                                        }`}
                                         placeholder="Enter your full name"
                                     />
                                 </div>
+                                {errors.fullName && (
+                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                                        {errors.fullName}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-2">
+                                    Phone Number
+                                </label>
+                                <div className="relative">
+                                    <Phone className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.phoneNumber ? 'text-red-400' : 'text-stone-400'}`} />
+                                    <input
+                                        type="text"
+                                        name="phoneNumber"
+                                        value={formData.phoneNumber}
+                                        onChange={handleChange}
+                                        maxLength={11}
+                                        className={`w-full pl-11 pr-4 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                                            errors.phoneNumber 
+                                                ? 'border-red-300 focus:ring-red-500' 
+                                                : 'border-amber-200 focus:ring-amber-500'
+                                        }`}
+                                        placeholder="09XXXXXXXXX"
+                                    />
+                                </div>
+                                {errors.phoneNumber && (
+                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                                        {errors.phoneNumber}
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -112,16 +217,26 @@ const SignupPage = () => {
                                     Email Address
                                 </label>
                                 <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.email ? 'text-red-400' : 'text-stone-400'}`} />
                                     <input
                                         type="email"
                                         name="email"
                                         value={formData.email}
                                         onChange={handleChange}
-                                        className="w-full pl-11 pr-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
+                                        className={`w-full pl-11 pr-4 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                                            errors.email 
+                                                ? 'border-red-300 focus:ring-red-500' 
+                                                : 'border-amber-200 focus:ring-amber-500'
+                                        }`}
                                         placeholder="Enter your email"
                                     />
                                 </div>
+                                {errors.email && (
+                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                                        {errors.email}
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -129,14 +244,18 @@ const SignupPage = () => {
                                     Password
                                 </label>
                                 <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.password ? 'text-red-400' : 'text-stone-400'}`} />
                                     <input
                                         type={showPassword ? "text" : "password"}
                                         name="password"
                                         value={formData.password}
                                         onChange={handleChange}
-                                        className="w-full pl-11 pr-12 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
-                                        placeholder="Create a password"
+                                        className={`w-full pl-11 pr-12 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                                            errors.password 
+                                                ? 'border-red-300 focus:ring-red-500' 
+                                                : 'border-amber-200 focus:ring-amber-500'
+                                        }`}
+                                        placeholder="Create a password (min 6 characters)"
                                     />
                                     <button
                                         type="button"
@@ -146,6 +265,12 @@ const SignupPage = () => {
                                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                     </button>
                                 </div>
+                                {errors.password && (
+                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                                        {errors.password}
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -153,13 +278,17 @@ const SignupPage = () => {
                                     Confirm Password
                                 </label>
                                 <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.confirmPassword ? 'text-red-400' : 'text-stone-400'}`} />
                                     <input
                                         type={showConfirmPassword ? "text" : "password"}
                                         name="confirmPassword"
                                         value={formData.confirmPassword}
                                         onChange={handleChange}
-                                        className="w-full pl-11 pr-12 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
+                                        className={`w-full pl-11 pr-12 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                                            errors.confirmPassword 
+                                                ? 'border-red-300 focus:ring-red-500' 
+                                                : 'border-amber-200 focus:ring-amber-500'
+                                        }`}
                                         placeholder="Confirm your password"
                                     />
                                     <button
@@ -170,6 +299,12 @@ const SignupPage = () => {
                                         {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                     </button>
                                 </div>
+                                {errors.confirmPassword && (
+                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                                        {errors.confirmPassword}
+                                    </p>
+                                )}
                             </div>
 
                             <button
@@ -191,12 +326,6 @@ const SignupPage = () => {
                                 <Link to="/login" className="text-amber-700 hover:text-amber-800 font-semibold">
                                     Sign in
                                 </Link>
-                            </p>
-                        </div>
-
-                        <div className="mt-6 pt-6 border-t border-amber-200/50">
-                            <p className="text-center text-sm text-stone-500">
-                                Want to become a tour guide? Sign up first, then apply from your profile.
                             </p>
                         </div>
                     </div>

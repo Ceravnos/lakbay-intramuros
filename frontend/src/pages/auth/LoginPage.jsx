@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, MapPin, Mail, Lock } from "lucide-react";
+import { Eye, EyeOff, MapPin, Mail, Lock, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import bg1 from "../assets/login-bg-1.jpg";
@@ -14,13 +14,54 @@ const LoginPage = () => {
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [errors, setErrors] = useState({});
     const { login } = useAuth();
     const navigate = useNavigate();
 
+    // Email validation regex
+    const isValidEmail = (email) => {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    };
+
+    // Validate form fields
+    const validateForm = () => {
+        const newErrors = {};
+
+        // Email validation
+        if (!email.trim()) {
+            newErrors.email = "Email is required";
+        } else if (!isValidEmail(email)) {
+            newErrors.email = "Please enter a valid email address";
+        }
+
+        // Password validation
+        if (!password) {
+            newErrors.password = "Password is required";
+        }
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
+    // Clear error when user starts typing
+    const handleEmailChange = (e) => {
+        setEmail(e.target.value);
+        if (errors.email) {
+            setErrors(prev => ({ ...prev, email: "" }));
+        }
+    };
+
+    const handlePasswordChange = (e) => {
+        setPassword(e.target.value);
+        if (errors.password) {
+            setErrors(prev => ({ ...prev, password: "" }));
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!email || !password) {
-            toast.error("Please fill in all fields");
+        
+        if (!validateForm()) {
             return;
         }
 
@@ -105,7 +146,16 @@ const LoginPage = () => {
                         <h1 className="text-2xl font-serif font-bold text-stone-800">Lakbay Intramuros</h1>
                     </div>
 
-                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-200/50 p-8">
+                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-200/50 p-6 sm:p-8">
+                        {/* Back to Home Link */}
+                        <Link 
+                            to="/" 
+                            className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 mb-6 transition-colors"
+                        >
+                            <ArrowLeft className="w-4 h-4" />
+                            Back to Home
+                        </Link>
+
                         <div className="text-center mb-8">
                             <h2 className="text-2xl font-serif font-bold text-stone-800">Welcome Back</h2>
                             <p className="text-stone-600 mt-2">Sign in to continue your journey</p>
@@ -117,15 +167,25 @@ const LoginPage = () => {
                                     Email Address
                                 </label>
                                 <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.email ? 'text-red-400' : 'text-stone-400'}`} />
                                     <input
                                         type="email"
                                         value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full pl-11 pr-4 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
+                                        onChange={handleEmailChange}
+                                        className={`w-full pl-11 pr-4 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                                            errors.email 
+                                                ? 'border-red-300 focus:ring-red-500 focus:border-transparent' 
+                                                : 'border-amber-200 focus:ring-amber-500 focus:border-transparent'
+                                        }`}
                                         placeholder="Enter your email"
                                     />
                                 </div>
+                                {errors.email && (
+                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                                        {errors.email}
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -133,12 +193,16 @@ const LoginPage = () => {
                                     Password
                                 </label>
                                 <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.password ? 'text-red-400' : 'text-stone-400'}`} />
                                     <input
                                         type={showPassword ? "text" : "password"}
                                         value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full pl-11 pr-12 py-3 bg-amber-50/50 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all text-stone-800 placeholder-stone-400"
+                                        onChange={handlePasswordChange}
+                                        className={`w-full pl-11 pr-12 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                                            errors.password 
+                                                ? 'border-red-300 focus:ring-red-500 focus:border-transparent' 
+                                                : 'border-amber-200 focus:ring-amber-500 focus:border-transparent'
+                                        }`}
                                         placeholder="Enter your password"
                                     />
                                     <button
@@ -149,6 +213,12 @@ const LoginPage = () => {
                                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                     </button>
                                 </div>
+                                {errors.password && (
+                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                                        {errors.password}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-end">
@@ -182,14 +252,14 @@ const LoginPage = () => {
                             </p>
                         </div>
 
-                        <div className="mt-8 pt-6 border-t border-amber-200/50">
+                        {/* <div className="mt-8 pt-6 border-t border-amber-200/50">
                             <p className="text-center text-sm text-stone-500">
                                 Want to become a tour guide?{" "}
                                 <Link to="/signup" className="text-amber-700 hover:text-amber-800 font-medium">
                                     Sign up and apply
                                 </Link>
                             </p>
-                        </div>
+                        </div> */}
                     </div>
                 </div>
             </div>

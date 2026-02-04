@@ -321,6 +321,7 @@ export const completeBooking = async (req, res) => {
         booking.status = "completed";
         booking.completedAt = new Date();
         await booking.save();
+        await booking.populate("guideId", "fullName");
 
         await setGuideActivityStatus(guide, "active");
 
@@ -330,8 +331,8 @@ export const completeBooking = async (req, res) => {
 
         
         io.to(booking.touristId.toString()).emit("booking:completed", {
-            bookingId: booking._id,
             message: "Your booking has been completed by the guide",
+            booking
         });
 
         res.json({
@@ -421,3 +422,5 @@ export const getBookingStats = async (req, res) => {
         res.status(500).json({ message: "Server error fetching stats" });
     }
 };
+
+

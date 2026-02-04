@@ -279,8 +279,17 @@ const BookingPage = () => {
                                         </div>
 
                                         <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-stone-800">
-                                                {guide.fullName}
+                                            <p className="flex items-center gap-2 font-medium text-stone-800">
+                                                <span>{guide.fullName}</span>
+                                                {guide.totalStars > 0 && guide.totalRatings > 0 && (
+                                                    <span className="flex items-center gap-1 text-sm text-stone-600">
+                                                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                                                        <span>{(guide.totalStars / guide.totalRatings).toFixed(1)}</span>
+                                                        <span className="text-stone-400">
+                                                            ({guide.totalRatings})
+                                                        </span>
+                                                    </span>
+                                                )}
                                             </p>
                                             {guide.contactNumber && (
                                                 <p className="text-sm text-stone-500 flex items-center gap-1">

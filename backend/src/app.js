@@ -13,6 +13,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
 import itineraryRoutes from "./routes/itineraryRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import ratingRoutes from "./routes/ratingRoutes.js";
 
 import { connectDB } from "./config/db.js";
 import rateLimiter from "./middleware/rateLimiter.js";
@@ -48,6 +49,8 @@ app.use("/api/admin", adminRoutes)
 app.use("/api/bookings", bookingRoutes)
 app.use("/api/itineraries", itineraryRoutes)
 app.use("/api/users", userRoutes)
+app.use("/api/ratings", ratingRoutes);
+
 
 // *FOR PRODUCTION ONLY*
 if(process.env.NODE_ENV === "production") {

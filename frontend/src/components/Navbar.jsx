@@ -69,10 +69,18 @@ const Navbar = () => {
                                 {/* User dropdown */}
                                 <div className="relative group">
                                     <button className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-stone-100 transition-colors">
-                                        <div className="w-8 h-8 rounded-full bg-sage-100 border border-sage-300 flex items-center justify-center">
-                                            <span className="text-sage-700 font-medium text-sm">
-                                                {user?.fullName?.charAt(0).toUpperCase() || "U"}
-                                            </span>
+                                        <div className="w-8 h-8 rounded-full bg-sage-100 border border-sage-300 flex items-center justify-center overflow-hidden">
+                                            {user?.profilePicture ? (
+                                                <img 
+                                                    src={user.profilePicture} 
+                                                    alt={user.fullName}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <span className="text-sage-700 font-medium text-sm">
+                                                    {user?.fullName?.charAt(0).toUpperCase() || "U"}
+                                                </span>
+                                            )}
                                         </div>
                                         <span className="hidden sm:block text-sm font-medium text-stone-700">
                                             {user?.fullName?.split(' ')[0]}

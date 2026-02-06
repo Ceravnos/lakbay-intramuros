@@ -42,7 +42,11 @@ const userSchema = new mongoose.Schema(
         // Guide application fields
         guideStatus: {
             type: String,
-            enum: [null, "pending", "approved", "rejected"],
+            enum: [null, "pending", "approved", "rejected", "documents_requested"],
+            default: null,
+        },
+        documentRequestReason: {
+            type: String,
             default: null,
         },
         activityStatus: {

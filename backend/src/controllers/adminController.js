@@ -1,10 +1,12 @@
 import User from "../models/User.js";
 
-// @desc    Get all pending guide applications
+// @desc    Get all pending guide applications (includes documents_requested)
 // @route   GET /api/admin/pending-guides
 export const getPendingGuides = async (req, res) => {
     try {
-        const pendingGuides = await User.find({ guideStatus: "pending" })
+        const pendingGuides = await User.find({ 
+            guideStatus: { $in: ["pending", "documents_requested"] }
+        })
             .select("-password")
             .sort({ createdAt: -1 });
 
@@ -27,7 +29,7 @@ export const getPendingGuides = async (req, res) => {
 export const getAllGuides = async (req, res) => {
     try {
         const guides = await User.find({ 
-            guideStatus: { $in: ["pending", "approved", "rejected"] }
+            guideStatus: { $in: ["pending", "approved", "rejected", "documents_requested"] }
         })
             .select("-password")
             .sort({ createdAt: -1 });
@@ -151,6 +153,41 @@ export const rejectGuide = async (req, res) => {
         });
     } catch (error) {
         console.error("Reject guide error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+// @desc    Request updated documents from guide
+// @route   PUT /api/admin/request-documents/:id
+export const requestDocuments = async (req, res) => {
+    try {
+        const { reason } = req.body;
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.guideStatus !== "pending") {
+            return res.status(400).json({ message: "Can only request documents for pending applications" });
+        }
+
+        user.guideStatus = "documents_requested";
+        user.documentRequestReason = reason || "Please upload updated or clearer documents for verification.";
+        await user.save();
+
+        res.json({ 
+            message: "Document request sent to guide",
+            guide: {
+                _id: user._id,
+                email: user.email,
+                fullName: user.fullName,
+                status: user.guideStatus,
+                documentRequestReason: user.documentRequestReason,
+            }
+        });
+    } catch (error) {
+        console.error("Request documents error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };

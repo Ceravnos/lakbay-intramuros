@@ -36,11 +36,7 @@ const ItineraryBuilderPage = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [showCategoryFilter, setShowCategoryFilter] = useState(false);
     
-    // Magic Generate modal state
-    const [showMagicModal, setShowMagicModal] = useState(false);
-    const [magicStep, setMagicStep] = useState(1);
-    const [magicCount, setMagicCount] = useState(5);
-    const [magicCategory, setMagicCategory] = useState('all');
+    // Magic Generate uses saved preferences directly (no modal needed)
     
     // Directions state (only for authenticated users)
     const [directionsResult, setDirectionsResult] = useState(null);
@@ -215,11 +211,7 @@ const ItineraryBuilderPage = () => {
         try {
             const res = await api.get('/users/personalization');
             setUserPreferences(res.data);
-            setMagicCount(res.data.maxLocationsPerTrip || 5);
-            if (res.data.preferredCategories?.length > 0) {
-                setMagicCategory(res.data.preferredCategories[0]);
-            }
-        } catch (error) {
+        } catch {
             console.log('Could not fetch preferences');
         }
     };
@@ -234,14 +226,15 @@ const ItineraryBuilderPage = () => {
         }
     };
 
-    // Magic Generate - Step by step flow
-    const openMagicModal = () => {
-        setMagicStep(1);
-        setShowMagicModal(true);
-    };
-
+    // Magic Generate - Direct generation using saved preferences
     const handleMagicGenerate = () => {
-        const generated = generateSmartItinerary(magicCategory, magicCount);
+        // Use saved preferences if available, otherwise use defaults
+        const categoryToUse = userPreferences.preferredCategories?.length > 0 
+            ? userPreferences.preferredCategories[0] 
+            : 'all';
+        const countToUse = userPreferences.maxLocationsPerTrip || 5;
+        
+        const generated = generateSmartItinerary(categoryToUse, countToUse);
         setItinerary(prev => ({
             ...prev,
             locations: generated.map((loc, index) => ({
@@ -259,7 +252,6 @@ const ItineraryBuilderPage = () => {
         // Clear any existing route when generating new itinerary
         setDirectionsResult(null);
         setTripStarted(false);
-        setShowMagicModal(false);
         toast.success(`Generated ${generated.length} stops!`);
     };
 
@@ -381,7 +373,7 @@ const ItineraryBuilderPage = () => {
                             <div className="p-3 border-b border-stone-200 bg-gradient-to-r from-terracotta-50 to-sand-50">
                                 <div className="flex items-center gap-2">
                                     <button
-                                        onClick={openMagicModal}
+                                        onClick={handleMagicGenerate}
                                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-terracotta-600 to-terracotta-500 hover:from-terracotta-700 hover:to-terracotta-600 text-white font-medium rounded-lg transition-all shadow-sm"
                                     >
                                         <Sparkles className="w-4 h-4" />
@@ -397,44 +389,7 @@ const ItineraryBuilderPage = () => {
                                             <Settings className="w-4 h-4" />
                                         </button>
                                     )}
-                                    <div className="relative">
-                                        <button
-                                            onClick={() => setShowCategoryFilter(!showCategoryFilter)}
-                                            className={`p-2.5 rounded-lg border transition-colors ${
-                                                selectedCategory !== 'all' 
-                                                    ? 'bg-sage-100 border-sage-300 text-sage-700' 
-                                                    : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
-                                            }`}
-                                        >
-                                            <Filter className="w-4 h-4" />
-                                        </button>
-                                        {showCategoryFilter && (
-                                            <div className="absolute right-0 bottom-full mb-2 w-48 bg-white rounded-lg shadow-lg border border-stone-200 py-1 z-20">
-                                                {LOCATION_CATEGORIES.map((cat) => (
-                                                    <button
-                                                        key={cat.id}
-                                                        onClick={() => {
-                                                            setSelectedCategory(cat.id);
-                                                            setShowCategoryFilter(false);
-                                                        }}
-                                                        className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                                                            selectedCategory === cat.id
-                                                                ? 'bg-terracotta-50 text-terracotta-700'
-                                                                : 'hover:bg-stone-50 text-stone-700'
-                                                        }`}
-                                                    >
-                                                        {cat.name}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
                                 </div>
-                                {selectedCategory !== 'all' && (
-                                    <p className="text-xs text-stone-500 mt-2 text-center">
-                                        Filtering: {LOCATION_CATEGORIES.find(c => c.id === selectedCategory)?.name}
-                                    </p>
-                                )}
                             </div>
                             
                             {/* Search Input */}
@@ -706,102 +661,6 @@ const ItineraryBuilderPage = () => {
                     )}
                 </div>
             </div>
-
-            {/* Magic Generate Modal */}
-            {showMagicModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
-                        <div className="p-6 border-b border-stone-200 bg-gradient-to-r from-terracotta-50 to-sand-50">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-terracotta-100 rounded-full flex items-center justify-center">
-                                        <Sparkles className="w-5 h-5 text-terracotta-600" />
-                                    </div>
-                                    <div>
-                                        <h2 className="font-serif font-semibold text-stone-800">Magic Generate</h2>
-                                        <p className="text-xs text-stone-500">Step {magicStep} of 2</p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setShowMagicModal(false)}
-                                    className="p-2 text-stone-400 hover:text-stone-600 rounded-lg"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div className="p-6">
-                            {magicStep === 1 ? (
-                                <>
-                                    <h3 className="font-medium text-stone-800 mb-2">How many locations?</h3>
-                                    <p className="text-sm text-stone-500 mb-4">Choose the number of stops for your itinerary</p>
-                                    
-                                    <div className="space-y-4">
-                                        <input
-                                            type="range"
-                                            min="1"
-                                            max="10"
-                                            value={magicCount}
-                                            onChange={(e) => setMagicCount(parseInt(e.target.value))}
-                                            className="w-full accent-terracotta-600"
-                                        />
-                                        <div className="flex justify-between text-sm text-stone-500">
-                                            <span>1</span>
-                                            <span className="font-semibold text-terracotta-600 text-lg">{magicCount}</span>
-                                            <span>10</span>
-                                        </div>
-                                    </div>
-                                    
-                                    <button
-                                        onClick={() => setMagicStep(2)}
-                                        className="w-full mt-6 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"
-                                    >
-                                        Next: Choose Category
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    <h3 className="font-medium text-stone-800 mb-2">Category Preference</h3>
-                                    <p className="text-sm text-stone-500 mb-4">What type of places interest you?</p>
-                                    
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {LOCATION_CATEGORIES.map((cat) => (
-                                            <button
-                                                key={cat.id}
-                                                onClick={() => setMagicCategory(cat.id)}
-                                                className={`p-3 rounded-lg border-2 text-left transition-all ${
-                                                    magicCategory === cat.id
-                                                        ? 'border-terracotta-500 bg-terracotta-50'
-                                                        : 'border-stone-200 hover:border-stone-300'
-                                                }`}
-                                            >
-                                                <p className="font-medium text-stone-800 text-sm">{cat.name}</p>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    
-                                    <div className="flex gap-3 mt-6">
-                                        <button
-                                            onClick={() => setMagicStep(1)}
-                                            className="flex-1 px-4 py-3 border border-stone-300 text-stone-700 font-medium rounded-lg hover:bg-stone-50 transition-colors"
-                                        >
-                                            Back
-                                        </button>
-                                        <button
-                                            onClick={handleMagicGenerate}
-                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"
-                                        >
-                                            <Sparkles className="w-4 h-4" />
-                                            Generate
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Personalization Modal */}
             {showPersonalization && (

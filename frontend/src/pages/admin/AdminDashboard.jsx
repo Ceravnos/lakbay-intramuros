@@ -4,7 +4,7 @@ import {
     Shield, Users, Clock, CheckCircle, XCircle, 
     LogOut, Eye, RefreshCw, Search,
     UserCheck, UserX, FileText, MapPin, Calendar,
-    Loader2, X
+    Loader2, X, FileQuestion
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
@@ -33,6 +33,7 @@ const AdminDashboard = () => {
     const [showModal, setShowModal] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
     const [rejectionReason, setRejectionReason] = useState("");
+    const [documentRequestReason, setDocumentRequestReason] = useState("");
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
@@ -94,6 +95,22 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleRequestDocuments = async (guideId) => {
+        setActionLoading(true);
+        try {
+            await api.put(`/admin/request-documents/${guideId}`, { reason: documentRequestReason });
+            toast.success("Document request sent to guide");
+            fetchData();
+            setShowModal(false);
+            setSelectedGuide(null);
+            setDocumentRequestReason("");
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to request documents");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const handleLogout = async () => {
         try {
             if (user?.role === "guide") {
@@ -141,6 +158,8 @@ const AdminDashboard = () => {
                 return <span className="px-2.5 py-1 text-xs font-medium bg-sage-100 text-sage-700 border border-sage-200 rounded-full">Approved</span>;
             case "rejected":
                 return <span className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-600 border border-red-200 rounded-full">Rejected</span>;
+            case "documents_requested":
+                return <span className="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full">Documents Requested</span>;
             default:
                 return null;
         }
@@ -468,7 +487,19 @@ const AdminDashboard = () => {
                                             onChange={(e) => setRejectionReason(e.target.value)}
                                             placeholder="Enter reason for rejection..."
                                             className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500 resize-none"
-                                            rows={3}
+                                            rows={2}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-stone-600 text-sm mb-2">
+                                            Document Request Reason (optional)
+                                        </label>
+                                        <textarea
+                                            value={documentRequestReason}
+                                            onChange={(e) => setDocumentRequestReason(e.target.value)}
+                                            placeholder="Enter reason for requesting updated documents..."
+                                            className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500 resize-none"
+                                            rows={2}
                                         />
                                     </div>
                                     <div className="flex gap-3">
@@ -487,6 +518,20 @@ const AdminDashboard = () => {
                                             )}
                                         </button>
                                         <button
+                                            onClick={() => handleRequestDocuments(selectedGuide._id)}
+                                            disabled={actionLoading}
+                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-xl transition-colors disabled:opacity-50"
+                                        >
+                                            {actionLoading ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <>
+                                                    <FileQuestion className="w-5 h-5" />
+                                                    Request Docs
+                                                </>
+                                            )}
+                                        </button>
+                                        <button
                                             onClick={() => handleReject(selectedGuide._id)}
                                             disabled={actionLoading}
                                             className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50"
@@ -501,6 +546,14 @@ const AdminDashboard = () => {
                                             )}
                                         </button>
                                     </div>
+                                </div>
+                            )}
+
+                            {/* Document Request Status */}
+                            {selectedGuide.status === "documents_requested" && selectedGuide.documentRequestReason && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                    <p className="text-amber-700 text-sm font-medium mb-1">Documents Requested</p>
+                                    <p className="text-stone-700">{selectedGuide.documentRequestReason}</p>
                                 </div>
                             )}
                         </div>

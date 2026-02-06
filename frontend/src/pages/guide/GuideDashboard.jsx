@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { 
     Compass, Clock, CheckCircle, Calendar, Users, MapPin,
     LogOut, RefreshCw, User, Phone, Mail, ChevronRight,
-    History, ClipboardList, Loader2, Map, AlertCircle, BadgeCheck,
+    History, ClipboardList, Loader2, Map, AlertCircle,
     XCircle
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -217,12 +217,6 @@ const GuideDashboard = () => {
 
                         {/* Right Section */}
                         <div className="flex items-center gap-3">
-                            {/* Status Badge */}
-                            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-full">
-                                <BadgeCheck className="w-4 h-4 text-green-600" />
-                                <span className="text-xs font-medium text-green-700">Approved</span>
-                            </div>
-
                             {/* Activity Status Indicator */}
                             <button
                                 onClick={() => {

@@ -6,6 +6,7 @@ import {
     getGuideById,
     approveGuide,
     rejectGuide,
+    requestDocuments,
     getDashboardStats,
 } from "../controllers/adminController.js";
 import { protect, adminOnly } from "../middleware/authMiddleware.js";
@@ -25,6 +26,7 @@ router.get("/guides", getAllGuides);
 router.get("/guide/:id", getGuideById);
 router.put("/approve-guide/:id", approveGuide);
 router.put("/reject-guide/:id", rejectGuide);
+router.put("/request-documents/:id", requestDocuments);
 router.get("/active-guides", getActiveGuides);
 
 export default router;

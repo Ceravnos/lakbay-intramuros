@@ -142,6 +142,14 @@ const ProfilePage = () => {
                 </span>
             );
         }
+        if (user?.guideStatus === 'documents_requested') {
+            return (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-700 text-sm font-medium rounded-full">
+                    <FileText className="w-4 h-4" />
+                    Documents Requested
+                </span>
+            );
+        }
         return null;
     };
 
@@ -235,7 +243,7 @@ const ProfilePage = () => {
                 </div>
 
                 {/* Guide Application Section */}
-                {user?.role === 'tourist' && !hasPendingGuideApplication && (
+                {user?.role === 'tourist' && !hasPendingGuideApplication && user?.guideStatus !== 'documents_requested' && (
                     <div className="bg-white rounded-2xl border border-stone-200 p-6 mb-6">
                         <div className="flex items-start justify-between">
                             <div>
@@ -403,6 +411,121 @@ const ProfilePage = () => {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {/* Documents Requested Notice */}
+                {user?.guideStatus === 'documents_requested' && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-6">
+                        <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <FileText className="w-6 h-6 text-amber-600" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-semibold text-stone-800 mb-1">
+                                    Updated Documents Required
+                                </h3>
+                                <p className="text-stone-600 text-sm mb-2">
+                                    The admin has requested updated documents for your guide application.
+                                </p>
+                                {user?.documentRequestReason && (
+                                    <p className="text-amber-700 text-sm mb-3">
+                                        Reason: {user.documentRequestReason}
+                                    </p>
+                                )}
+                                {!showGuideForm && (
+                                    <button
+                                        onClick={() => setShowGuideForm(true)}
+                                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition-colors text-sm"
+                                    >
+                                        Upload New Documents
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {showGuideForm && (
+                            <form onSubmit={handleGuideApplication} className="mt-6 space-y-4 border-t border-amber-200 pt-6">
+                                {/* Profile Picture Required Notice */}
+                                {!user?.profilePicture && (
+                                    <div className="bg-sand-50 border border-sand-200 rounded-xl p-4">
+                                        <p className="text-sand-700 text-sm">
+                                            <strong>Note:</strong> A profile picture is required for guide applications. Please upload one above before submitting.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-stone-600 text-sm mb-2">
+                                        Contact Number
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        value={guideFormData.contactNumber}
+                                        onChange={(e) => setGuideFormData(prev => ({ ...prev, contactNumber: e.target.value }))}
+                                        className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                        placeholder="Enter contact number"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-stone-600 text-sm mb-2">
+                                        DOT Accreditation Document
+                                    </label>
+                                    <div className="border-2 border-dashed border-stone-300 rounded-xl p-6 text-center hover:border-amber-400 transition-colors">
+                                        <input
+                                            type="file"
+                                            accept=".pdf,.jpg,.jpeg,.png"
+                                            onChange={(e) => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    setGuideFormData(prev => ({
+                                                        ...prev,
+                                                        accreditationFile: file,
+                                                        accreditationFileName: file.name
+                                                    }));
+                                                }
+                                            }}
+                                            className="hidden"
+                                            id="accreditation-reupload"
+                                            required
+                                        />
+                                        <label htmlFor="accreditation-reupload" className="cursor-pointer">
+                                            <Upload className="w-8 h-8 text-stone-400 mx-auto mb-2" />
+                                            <p className="text-stone-600 text-sm">
+                                                {guideFormData.accreditationFileName || 'Click to upload your DOT accreditation'}
+                                            </p>
+                                            <p className="text-stone-400 text-xs mt-1">PDF, JPG, or PNG (max 5MB)</p>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowGuideForm(false)}
+                                        className="flex-1 px-4 py-3 border border-stone-300 text-stone-700 font-medium rounded-xl hover:bg-stone-50 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={submitting || !user?.profilePicture}
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50"
+                                    >
+                                        {submitting ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Submitting...
+                                            </>
+                                        ) : (
+                                            'Resubmit Application'
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </div>
                 )}
 

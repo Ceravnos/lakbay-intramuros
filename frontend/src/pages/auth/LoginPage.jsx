@@ -69,13 +69,14 @@ const LoginPage = () => {
         try {
             const userData = await login(email, password);
             toast.success("Welcome back!");
-            // Redirect based on role and guide mode
+            // Redirect based on role
             if (userData.role === "admin") {
                 navigate("/admin/dashboard");
-            } else if (userData.role === "guide" && userData.isGuideMode) {
+            } else if (userData.role === "guide" && userData.guideStatus === "approved") {
+                // Approved guides go to guide dashboard
                 navigate("/guide/dashboard");
             } else {
-                // Redirect tourists and guides in tourist mode to dashboard
+                // Tourists go to tourist dashboard
                 navigate("/dashboard");
             }
         } catch (error) {

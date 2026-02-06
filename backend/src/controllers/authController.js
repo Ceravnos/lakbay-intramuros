@@ -4,7 +4,7 @@ import { setGuideActivityStatus } from "../utils/guideActivity.js";
 
 export const touchLastActivity = async (user) => {
     user.lastActivityAt = new Date();
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
 };
 
 // @desc    Register a new user
@@ -106,9 +106,8 @@ export const toggleGuideMode = async (req, res) => {
         }
 
         user.isGuideMode = !user.isGuideMode;
-        await user.save();
-
-        await touchLastActivity(user);
+        user.lastActivityAt = new Date();
+        await user.save({ validateModifiedOnly: true });
 
         res.json({
             message: user.isGuideMode ? "Switched to Guide Mode" : "Switched to Tourist Mode",
@@ -175,27 +174,31 @@ export const login = async (req, res) => {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
+        // Update last activity for guides BEFORE sending response to prevent ERR_HTTP_HEADERS_SENT
+        if (user.role === "guide") {
+            user.lastActivityAt = new Date();
+            await user.save({ validateModifiedOnly: true });
+        }
+
         const token = generateToken(user._id, user.role);
 
-        res.json({
+        return res.json({
             _id: user._id,
             email: user.email,
             fullName: user.fullName,
             phoneNumber: user.phoneNumber,
+            profilePicture: user.profilePicture,
             role: user.role,
             guideStatus: user.guideStatus,
             contactNumber: user.contactNumber,
             isGuideMode: user.isGuideMode,
+            activityStatus: user.activityStatus,
+            personalization: user.personalization,
             token,
         });
-
-        if(user.role === "guide"){
-            await touchLastActivity(user);
-        }
-
     } catch (error) {
         console.error("Login error:", error);
-        res.status(500).json({ message: "Server error during login" });
+        return res.status(500).json({ message: "Server error during login" });
     }
 };
 

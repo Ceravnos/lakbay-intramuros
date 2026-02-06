@@ -2,24 +2,66 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { 
     User, Mail, Phone, FileText, Upload, CheckCircle, 
-    Clock, XCircle, Loader2, Shield, Compass, ToggleLeft, ToggleRight, MapPin, Star
+    Clock, XCircle, Loader2, Shield, Compass, ToggleLeft, ToggleRight, MapPin, Star, Camera
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
+import api from '../lib/axios';
 
 const ProfilePage = () => {
-    const { user, applyForGuide, hasPendingGuideApplication, isApprovedGuide, isGuideMode, toggleGuideMode } = useAuth();
+    const { user, applyForGuide, hasPendingGuideApplication, isApprovedGuide, isGuideMode, toggleGuideMode, refreshUser } = useAuth();
     const navigate = useNavigate();
     const [togglingMode, setTogglingMode] = useState(false);
+    const [uploadingPicture, setUploadingPicture] = useState(false);
     
     const [showGuideForm, setShowGuideForm] = useState(false);
     const [guideFormData, setGuideFormData] = useState({
-        contactNumber: '',
+        contactNumber: user?.phoneNumber || '',
         accreditationFile: null,
         accreditationFileName: '',
     });
     const [submitting, setSubmitting] = useState(false);
+
+    // Handle profile picture upload
+    const handleProfilePictureChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 2 * 1024 * 1024) {
+            toast.error('Profile picture must be less than 2MB');
+            return;
+        }
+
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please upload an image file');
+            return;
+        }
+
+        setUploadingPicture(true);
+        try {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                try {
+                    await api.put('/users/profile-picture', {
+                        profilePicture: reader.result
+                    });
+                    toast.success('Profile picture updated!');
+                    if (refreshUser) {
+                        await refreshUser();
+                    }
+                } catch (error) {
+                    toast.error('Failed to update profile picture');
+                } finally {
+                    setUploadingPicture(false);
+                }
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            toast.error('Failed to process image');
+            setUploadingPicture(false);
+        }
+    };
 
     const averageRating =
     user?.totalRatings > 0
@@ -63,7 +105,6 @@ const ProfilePage = () => {
         setSubmitting(true);
         try {
             await applyForGuide(
-                guideFormData.contactNumber,
                 guideFormData.accreditationFile,
                 guideFormData.accreditationFileName
             );
@@ -112,10 +153,40 @@ const ProfilePage = () => {
                 {/* Profile Header */}
                 <div className="bg-white rounded-2xl border border-stone-200 p-6 mb-6">
                     <div className="flex items-start gap-4">
-                        <div className="w-20 h-20 bg-sage-100 rounded-full flex items-center justify-center">
-                            <span className="text-sage-700 font-bold text-3xl">
-                                {user?.fullName?.charAt(0).toUpperCase()}
-                            </span>
+                        {/* Profile Picture with Upload */}
+                        <div className="relative group">
+                            <div className="w-20 h-20 bg-sage-100 rounded-full flex items-center justify-center overflow-hidden">
+                                {user?.profilePicture ? (
+                                    <img 
+                                        src={user.profilePicture} 
+                                        alt={user.fullName}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <span className="text-sage-700 font-bold text-3xl">
+                                        {user?.fullName?.charAt(0).toUpperCase()}
+                                    </span>
+                                )}
+                            </div>
+                            {/* Upload overlay */}
+                            <label 
+                                htmlFor="profile-picture-input"
+                                className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
+                            >
+                                {uploadingPicture ? (
+                                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                                ) : (
+                                    <Camera className="w-6 h-6 text-white" />
+                                )}
+                            </label>
+                            <input
+                                type="file"
+                                id="profile-picture-input"
+                                accept="image/*"
+                                onChange={handleProfilePictureChange}
+                                className="hidden"
+                                disabled={uploadingPicture}
+                            />
                         </div>
                         <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -140,6 +211,12 @@ const ProfilePage = () => {
                                 <Mail className="w-4 h-4" />
                                 {user?.email}
                             </p>
+                            {user?.phoneNumber && (
+                                <p className="text-stone-500 flex items-center gap-2 mt-1">
+                                    <Phone className="w-4 h-4" />
+                                    {user.phoneNumber}
+                                </p>
+                            )}
                             <div className="flex items-center gap-3 mt-3">
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-stone-100 text-stone-600 text-sm font-medium rounded-full capitalize">
                                     {user?.role === 'guide' ? (
@@ -181,6 +258,17 @@ const ProfilePage = () => {
 
                         {showGuideForm && (
                             <form onSubmit={handleGuideApplication} className="mt-6 space-y-4">
+                                {/* Profile Picture Required Notice */}
+                                {!user?.profilePicture && (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                        <p className="text-amber-800 text-sm">
+                                            <strong>Note:</strong> A profile picture is required before applying as a tour guide. 
+                                            Please upload one by clicking on your profile picture above.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Contact number is pre-filled from signup - show as read-only */}
                                 <div>
                                     <label className="block text-sm font-medium text-stone-700 mb-2">
                                         Contact Number
@@ -189,12 +277,12 @@ const ProfilePage = () => {
                                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
                                         <input
                                             type="tel"
-                                            value={guideFormData.contactNumber}
-                                            onChange={(e) => setGuideFormData(prev => ({ ...prev, contactNumber: e.target.value }))}
-                                            placeholder="+63 9XX XXX XXXX"
-                                            className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta-500 focus:border-transparent"
+                                            value={user?.phoneNumber || ''}
+                                            readOnly
+                                            className="w-full pl-11 pr-4 py-3 bg-stone-100 border border-stone-200 rounded-xl text-stone-600 cursor-not-allowed"
                                         />
                                     </div>
+                                    <p className="text-xs text-stone-500 mt-1">Phone number from your account</p>
                                 </div>
 
                                 <div>
@@ -253,8 +341,8 @@ const ProfilePage = () => {
                                     </button>
                                     <button
                                         type="submit"
-                                        disabled={submitting}
-                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50"
+                                        disabled={submitting || !user?.profilePicture}
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {submitting ? (
                                             <Loader2 className="w-5 h-5 animate-spin" />

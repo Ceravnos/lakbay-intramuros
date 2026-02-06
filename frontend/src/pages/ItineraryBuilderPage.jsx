@@ -53,6 +53,10 @@ const ItineraryBuilderPage = () => {
         preferredCategories: [],
         maxLocationsPerTrip: 5,
     });
+    
+    // Drag and drop state
+    const [draggedItem, setDraggedItem] = useState(null);
+    const [dragOverItem, setDragOverItem] = useState(null);
 
     // Load existing itinerary or session data
     useEffect(() => {
@@ -151,6 +155,47 @@ const ItineraryBuilderPage = () => {
             ),
         }));
     }, []);
+
+    // Drag and drop handlers
+    const handleDragStart = (e, index) => {
+        setDraggedItem(index);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        if (draggedItem === null) return;
+        if (index !== dragOverItem) {
+            setDragOverItem(index);
+        }
+    };
+
+    const handleDragEnd = () => {
+        if (draggedItem === null || dragOverItem === null || draggedItem === dragOverItem) {
+            setDraggedItem(null);
+            setDragOverItem(null);
+            return;
+        }
+
+        // Reorder locations
+        const sortedLocations = [...itinerary.locations].sort((a, b) => a.order - b.order);
+        const [removed] = sortedLocations.splice(draggedItem, 1);
+        sortedLocations.splice(dragOverItem, 0, removed);
+
+        // Update order values
+        const reorderedLocations = sortedLocations.map((loc, idx) => ({
+            ...loc,
+            order: idx,
+        }));
+
+        setItinerary(prev => ({
+            ...prev,
+            locations: reorderedLocations,
+        }));
+
+        setDraggedItem(null);
+        setDragOverItem(null);
+    };
 
     // Filter locations by search and category
     const filteredLandmarks = INTRAMUROS_LOCATIONS.filter(landmark => {
@@ -294,48 +339,11 @@ const ItineraryBuilderPage = () => {
         <div className="min-h-screen bg-white flex flex-col">
             <Navbar />
             
-            {/* Sub Header */}
-            <div className="border-b border-stone-200 bg-white">
-                <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => navigate('/dashboard')}
-                            className="p-2 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
-                        >
-                            <ChevronLeft className="w-5 h-5" />
-                        </button>
-                        <div>
-                            <input
-                                type="text"
-                                value={itinerary.name}
-                                onChange={(e) => setItinerary(prev => ({ ...prev, name: e.target.value }))}
-                                className="text-lg font-serif font-semibold text-stone-800 bg-transparent border-none focus:outline-none focus:ring-0 w-full"
-                                placeholder="Itinerary Name"
-                            />
-                            <p className="text-xs text-stone-500">
-                                {itinerary.locations.length} {itinerary.locations.length === 1 ? 'stop' : 'stops'}
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="flex items-center gap-2 px-4 py-2 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-                    >
-                        {saving ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <Save className="w-4 h-4" />
-                        )}
-                        Save
-                    </button>
-                </div>
-            </div>
 
-            {/* Main Content - Two Column Layout */}
-            <div className="flex-1 flex">
+            {/* Main Content - Two Column Layout (stacked on mobile) */}
+            <div className="flex-1 flex flex-col lg:flex-row">
                 {/* Left - Map */}
-                <div className="flex-1 relative bg-stone-100">
+                <div className="flex-1 relative bg-stone-100 min-h-[50vh] lg:min-h-0">
                     {/* Google Map */}
                     <IntramurosMap
                         markers={itinerary.locations
@@ -379,6 +387,16 @@ const ItineraryBuilderPage = () => {
                                         <Sparkles className="w-4 h-4" />
                                         Magic Generate
                                     </button>
+                                    {/* Preferences Button - next to Magic Generate */}
+                                    {isAuthenticated && (
+                                        <button
+                                            onClick={() => setShowPersonalization(true)}
+                                            className="p-2.5 rounded-lg border bg-white border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
+                                            title="Preferences"
+                                        >
+                                            <Settings className="w-4 h-4" />
+                                        </button>
+                                    )}
                                     <div className="relative">
                                         <button
                                             onClick={() => setShowCategoryFilter(!showCategoryFilter)}
@@ -471,16 +489,39 @@ const ItineraryBuilderPage = () => {
                     </div>
                 </div>
 
-                {/* Right - Itinerary Panel */}
-                <div className="w-96 border-l border-stone-200 flex flex-col bg-white">
-                    {/* Sticky Header - Itinerary Name, Actions */}
+                {/* Right - Itinerary Panel (full width on mobile, fixed width on desktop) */}
+                <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-stone-200 flex flex-col bg-white">
+                    {/* Sticky Header - Itinerary Name, Actions, Back & Save */}
                     <div className="p-4 border-b border-stone-200 bg-white sticky top-0 z-10">
+                        {/* Back button and Save */}
+                        <div className="flex items-center justify-between mb-3">
+                            <button
+                                onClick={() => navigate('/dashboard')}
+                                className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700 transition-colors"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                                Back
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-terracotta-600 hover:bg-terracotta-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {saving ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Save className="w-3.5 h-3.5" />
+                                )}
+                                Save
+                            </button>
+                        </div>
+                        
                         {/* Itinerary Name Input */}
                         <input
                             type="text"
                             value={itinerary.name}
                             onChange={(e) => setItinerary(prev => ({ ...prev, name: e.target.value }))}
-                            className="w-full text-lg font-serif font-semibold text-stone-800 bg-transparent border-none focus:outline-none focus:ring-0 mb-2"
+                            className="w-full text-lg font-serif font-semibold text-stone-800 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-terracotta-500 focus:outline-none transition-colors mb-2 pb-1"
                             placeholder="Name your itinerary..."
                         />
                         
@@ -510,17 +551,6 @@ const ItineraryBuilderPage = () => {
                                     Login to see routes
                                 </div>
                             )}
-                            
-                            {/* Manage Personalization */}
-                            {isAuthenticated && (
-                                <button
-                                    onClick={() => setShowPersonalization(true)}
-                                    className="p-2.5 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
-                                    title="Manage Personalization"
-                                >
-                                    <Settings className="w-5 h-5" />
-                                </button>
-                            )}
                         </div>
                         
                         {/* Trip Stats */}
@@ -547,7 +577,7 @@ const ItineraryBuilderPage = () => {
                         <div className="flex gap-3">
                             <div className="flex-1">
                                 <label className="block text-xs font-medium text-stone-500 mb-1">
-                                    Preferred Date
+                                    Date
                                 </label>
                                 <div className="relative">
                                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
@@ -599,11 +629,21 @@ const ItineraryBuilderPage = () => {
                                         .map((location, index) => (
                                             <div
                                                 key={location.placeId}
-                                                className="bg-stone-50 rounded-xl border border-stone-200 overflow-hidden"
+                                                draggable
+                                                onDragStart={(e) => handleDragStart(e, index)}
+                                                onDragOver={(e) => handleDragOver(e, index)}
+                                                onDragEnd={handleDragEnd}
+                                                className={`bg-stone-50 rounded-xl border overflow-hidden transition-all ${
+                                                    draggedItem === index 
+                                                        ? 'opacity-50 border-terracotta-400 scale-[0.98]' 
+                                                        : dragOverItem === index 
+                                                            ? 'border-terracotta-500 border-2 bg-terracotta-50' 
+                                                            : 'border-stone-200'
+                                                }`}
                                             >
                                                 <div className="flex items-start gap-3 p-3">
                                                     <div className="flex items-center gap-2">
-                                                        <GripVertical className="w-4 h-4 text-stone-300 cursor-grab" />
+                                                        <GripVertical className="w-4 h-4 text-stone-400 cursor-grab active:cursor-grabbing hover:text-stone-600" />
                                                         <div className="w-7 h-7 bg-terracotta-100 text-terracotta-600 rounded-full flex items-center justify-center text-sm font-semibold">
                                                             {index + 1}
                                                         </div>
@@ -643,7 +683,20 @@ const ItineraryBuilderPage = () => {
                     {itinerary.locations.length > 0 && id && (
                         <div className="p-4 border-t border-stone-200">
                             <button
-                                onClick={() => navigate(`/book/${id}`)}
+                                onClick={() => {
+                                    // Validate date is set before booking
+                                    if (!itinerary.preferredDate) {
+                                        toast.error('Please select a date before booking a guide');
+                                        return;
+                                    }
+                                    // Navigate with date and numberOfPeople pre-filled
+                                    navigate(`/book/${id}`, {
+                                        state: {
+                                            preferredDate: itinerary.preferredDate,
+                                            numberOfPeople: itinerary.numberOfPeople || 1
+                                        }
+                                    });
+                                }}
                                 className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"
                             >
                                 <Users className="w-4 h-4" />

@@ -23,9 +23,16 @@ const userSchema = new mongoose.Schema(
         phoneNumber: {
             type: String,
             trim: true,
-            required: true,
+            required: function() {
+                // phoneNumber is required for tourists and guides, but not for admins
+                return this.role !== "admin";
+            },
             minlength: 11,
             maxlength: 11,
+        },
+        profilePicture: {
+            type: String,
+            default: null,
         },
         role: {
             type: String,

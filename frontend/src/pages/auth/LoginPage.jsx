@@ -75,7 +75,8 @@ const LoginPage = () => {
             } else if (userData.role === "guide" && userData.isGuideMode) {
                 navigate("/guide/dashboard");
             } else {
-                navigate("/");
+                // Redirect tourists and guides in tourist mode to dashboard
+                navigate("/dashboard");
             }
         } catch (error) {
             toast.error(error.response?.data?.message || "Login failed");

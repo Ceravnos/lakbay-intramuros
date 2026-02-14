@@ -480,11 +480,15 @@ const ProfilePage = () => {
                                             onChange={(e) => {
                                                 const file = e.target.files[0];
                                                 if (file) {
-                                                    setGuideFormData(prev => ({
-                                                        ...prev,
-                                                        accreditationFile: file,
-                                                        accreditationFileName: file.name
-                                                    }));
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => {
+                                                        setGuideFormData(prev => ({
+                                                            ...prev,
+                                                            accreditationFile: reader.result,
+                                                            accreditationFileName: file.name,
+                                                        }));
+                                                    };
+                                                    reader.readAsDataURL(file);
                                                 }
                                             }}
                                             className="hidden"

@@ -9,6 +9,11 @@ import {
     generateSmartItinerary,
     calculateTotalTime 
 } from '../data/locations';
+import bg1 from './assets/login-bg-1.jpg';
+import bg2 from './assets/login-bg-2.jpg';
+import bg3 from './assets/login-bg-3.jpg';
+
+const backgrounds = [bg1, bg2, bg3];
 
 const LandingPage = () => {
     const { isAuthenticated } = useAuth();
@@ -19,6 +24,18 @@ const LandingPage = () => {
     const [showCategoryFilter, setShowCategoryFilter] = useState(false);
     const [showMobileItinerary, setShowMobileItinerary] = useState(false);
     const mapSectionRef = useRef(null);
+
+    // Ken Burns slideshow
+    const [bgIndex, setBgIndex] = useState(
+        Math.floor(Math.random() * backgrounds.length)
+    );
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setBgIndex((prev) => (prev + 1) % backgrounds.length);
+        }, 5000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Load session itinerary from sessionStorage
     useEffect(() => {
@@ -132,6 +149,20 @@ const LandingPage = () => {
 
             {/* Hero Section */}
             <section className="bg-gradient-to-br from-amber-800 via-amber-900 to-stone-900 relative overflow-hidden">
+                {backgrounds.map((bg, index) => (
+                    <img
+                        key={index}
+                        src={bg}
+                        alt=""
+                        className={`
+                            absolute inset-0 h-full w-full object-cover
+                            motion-safe:animate-kenburns
+                            transition-opacity duration-[2000ms] ease-in-out
+                            ${index === bgIndex ? "opacity-100" : "opacity-0"}
+                        `}
+                    />
+                ))}
+                <div className="absolute inset-0 bg-stone-900/60" />
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d4a574%22 fill-opacity=%220.08%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-30"></div>
                 <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32 text-center">
                     <MapPin className="w-14 h-14 sm:w-20 sm:h-20 text-amber-400 mx-auto mb-6" />

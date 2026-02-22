@@ -1,6 +1,7 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { GoogleMap, useLoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
 import { MapPin, Loader2 } from 'lucide-react';
+import { INTRAMUROS_LOCATIONS, getCategoryConfig } from '../../data/locations';
 
 // Intramuros bounds and center
 const INTRAMUROS_CENTER = {
@@ -44,7 +45,7 @@ const mapOptions = {
 };
 
 // IMPORTANT: libraries array must be defined outside component to prevent re-renders
-const libraries = ['places'];
+const libraries = ['places', 'marker'];
 
 const IntramurosMap = ({ 
     markers = [], 
@@ -113,6 +114,20 @@ const IntramurosMap = ({
         );
     }
 
+    //marker icons
+
+    const getMarkerIcon = (location) => {
+        const category = getCategoryConfig(location.category);
+
+        if (!category.markerIcon) return undefined;
+
+        return {
+            url: category.markerIcon,
+            scaledSize: new window.google.maps.Size(40, 40),
+            anchor: new window.google.maps.Point(20, 40),
+        };
+    };
+
     return (
         <GoogleMap
             mapContainerStyle={mapContainerStyle}
@@ -140,28 +155,15 @@ const IntramurosMap = ({
             )}
 
             {/* Render markers with sequential numbers */}
-            {markers.map((marker, index) => (
+            {INTRAMUROS_LOCATIONS.map((location) => (
                 <Marker
-                    key={marker.id || marker.placeId || index}
-                    position={{ lat: marker.lat, lng: marker.lng }}
-                    onClick={() => handleMarkerClick(marker)}
-                    label={showNumberedPins ? {
-                        text: String(index + 1),
-                        color: 'white',
-                        fontWeight: 'bold',
-                        fontSize: '12px',
-                    } : undefined}
-                    icon={showNumberedPins ? {
-                        path: window.google.maps.SymbolPath.CIRCLE,
-                        scale: 14,
-                        fillColor: selectedMarkerId === marker.id ? '#B45309' : '#78716C',
-                        fillOpacity: 1,
-                        strokeColor: 'white',
-                        strokeWeight: 2,
-                    } : undefined}
+                    key={location.id}
+                    position={{ lat: location.lat, lng: location.lng }}
+                    icon={getMarkerIcon(location)}
+                    onClick={() => handleMarkerClick(location)}
                 />
             ))}
-
+            
             {/* Info window for selected marker */}
             {selectedMarker && (
                 <InfoWindow

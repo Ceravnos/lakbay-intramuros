@@ -2,18 +2,53 @@
 // Used for the Smart Generate feature and map markers
 
 const path = 'assets/locations/'; //global variable for path to the images
+const iconPath = 'assets/poi-icons/'
 //Note: use backticks(``) instead of apostraphes
 
-export const LOCATION_CATEGORIES = [
-    { id: 'all', name: 'All Locations', icon: 'MapPin' },
-    { id: 'churches', name: 'Churches', icon: 'Church' },
-    { id: 'museums', name: 'Museums & Heritage', icon: 'Landmark' },
-    { id: 'forts', name: 'Forts & Walls', icon: 'Castle' },
-    { id: 'parks', name: 'Parks & Plazas', icon: 'Trees' },
-    { id: 'food', name: 'Food & Dining', icon: 'UtensilsCrossed' },
-    { id: 'emergency', name: 'Emergency Services', icon: 'Siren' },
-    { id: 'shops', name: 'Shops', icon: 'ShoppingBag' },
-];
+export const LOCATION_CATEGORIES = {
+  all: {
+    id: 'all',
+    name: 'All Locations',
+    icon: 'MapPin',
+    markerIcon: null,
+  },
+  churches: {
+    id: 'churches',
+    name: 'Churches',
+    icon: `${iconPath}church.svg`,
+    markerIcon: `${iconPath}church.svg`,
+  },
+  museums: {
+    id: 'museums',
+    name: 'Museums & Heritage',
+    icon: `${iconPath}museum.svg`,
+    markerIcon: `${iconPath}museum.svg`,
+  },
+  forts: {
+    id: 'forts',
+    name: 'Forts & Walls',
+    icon: `${iconPath}fort.svg`,
+    markerIcon: `${iconPath}fort.svg`,
+  },
+  parks: {
+    id: 'parks',
+    name: 'Parks & Plazas',
+    icon: `${iconPath}park.svg`,
+    markerIcon: `${iconPath}park.svg`,
+  },
+  food: {
+    id: 'food',
+    name: 'Food & Dining',
+    icon: `${iconPath}food.svg`,
+    markerIcon: `${iconPath}food.svg`,
+  },
+  shops: {
+    id: 'shops',
+    name: 'Shops',
+    icon: `${iconPath}shop.svg`,
+    markerIcon: `${iconPath}shop.svg`,
+  },
+};
 
 export const INTRAMUROS_LOCATIONS = [
     // Churches
@@ -327,44 +362,6 @@ export const INTRAMUROS_LOCATIONS = [
         estimatedTime: 60,
         image: `${path}grotto-hookah.jpg`,
     }, 
-    
-    //Emergency Services
-    {
-        id: 'amosup',
-        placeId: 'amosup',
-        name: "AMOSUP Seamen's Hospital Manila",
-        category: 'emergency',
-        lat: 14.58750899353152, 
-        lng: 120.97762562820692,
-        address: 'San Jose St, Intramuros, Manila',
-        description: 'The first union-operated hospital in the country.',
-        estimatedTime: 30,
-        image: `${path}amosup.jpg`,
-    },
-    {
-        id: 'fire-station',
-        placeId: 'fire-station',
-        name: "Intramuros Fire Station",
-        category: 'emergency',
-        lat: 14.592183886417322, 
-        lng: 120.97225111178265,
-        address: 'Soriano Ave, Intramuros, Manila',
-        description: "Intramuros primary fire station.",
-        estimatedTime: 15,
-        image: `${path}fire-station.jpg`,
-    },
-    {
-        id: 'station-5',
-        placeId: 'station-5',
-        name: "Manila Police District - Station 5",
-        category: 'emergency',
-        lat: 14.587256005549989, 
-        lng: 120.97881885796599 ,
-        address: 'Soriano Ave, Intramuros, Manila',
-        description: "Intramuros primary fire station.",
-        estimatedTime: 15,
-        image: `${path}station-5.png`,
-    },
 ];
 
 // Utility function to shuffle array (Fisher-Yates algorithm)
@@ -408,6 +405,10 @@ export const calculateTotalTime = (locations) => {
     const locationTime = locations.reduce((sum, loc) => sum + (loc.estimatedTime || 30), 0);
     const travelTime = Math.max(0, (locations.length - 1) * 10); // 10 min between stops
     return locationTime + travelTime;
+};
+
+export const getCategoryConfig = (categoryId) => {
+  return LOCATION_CATEGORIES[categoryId] || LOCATION_CATEGORIES.all;
 };
 
 export default INTRAMUROS_LOCATIONS;

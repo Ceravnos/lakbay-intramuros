@@ -10,263 +10,263 @@ import bg3 from "../assets/login-bg-3.jpg";
 const backgrounds = [bg1, bg2, bg3];
 
 const LoginPage = () => {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [errors, setErrors] = useState({});
-    const { login } = useAuth();
-    const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
-    // Email validation regex
-    const isValidEmail = (email) => {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    };
+  // Email validation regex
+  const isValidEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
 
-    // Validate form fields
-    const validateForm = () => {
-        const newErrors = {};
+  // Validate form fields
+  const validateForm = () => {
+    const newErrors = {};
 
-        // Email validation
-        if (!email.trim()) {
-            newErrors.email = "Email is required";
-        } else if (!isValidEmail(email)) {
-            newErrors.email = "Please enter a valid email address";
-        }
+    // Email validation
+    if (!email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!isValidEmail(email)) {
+      newErrors.email = "Please enter a valid email address";
+    }
 
-        // Password validation
-        if (!password) {
-            newErrors.password = "Password is required";
-        }
+    // Password validation
+    if (!password) {
+      newErrors.password = "Password is required";
+    }
 
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
-    // Clear error when user starts typing
-    const handleEmailChange = (e) => {
-        setEmail(e.target.value);
-        if (errors.email) {
-            setErrors(prev => ({ ...prev, email: "" }));
-        }
-    };
+  // Clear error when user starts typing
+  const handleEmailChange = (e) => {
+    setEmail(e.target.value);
+    if (errors.email) {
+      setErrors(prev => ({ ...prev, email: "" }));
+    }
+  };
 
-    const handlePasswordChange = (e) => {
-        setPassword(e.target.value);
-        if (errors.password) {
-            setErrors(prev => ({ ...prev, password: "" }));
-        }
-    };
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+    if (errors.password) {
+      setErrors(prev => ({ ...prev, password: "" }));
+    }
+  };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        
-        if (!validateForm()) {
-            return;
-        }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
 
-        setLoading(true);
-        try {
-            const userData = await login(email, password);
-            toast.success("Welcome back!");
-            // Redirect based on role
-            if (userData.role === "admin") {
-                navigate("/admin/dashboard");
-            } else if (userData.role === "guide" && userData.guideStatus === "approved") {
-                // Approved guides go to guide dashboard
-                navigate("/guide/dashboard");
-            } else {
-                // Tourists go to tourist dashboard
-                navigate("/dashboard");
-            }
-        } catch (error) {
-            toast.error(error.response?.data?.message || "Login failed");
-        } finally {
-            setLoading(false);
-        }
-    };
+    setLoading(true);
+    try {
+      const userData = await login(email, password);
+      toast.success("Welcome back!");
+      // Redirect based on role
+      if (userData.role === "admin") {
+        navigate("/admin/dashboard");
+      } else if (userData.role === "guide" && userData.guideStatus === "approved") {
+        // Approved guides go to guide dashboard
+        navigate("/guide/dashboard");
+      } else {
+        // Tourists go to tourist dashboard
+        navigate("/dashboard");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    //Slideshow effect for Ken Burns
-    const [bgIndex, setBgIndex] = useState(
-        Math.floor(Math.random() * backgrounds.length)
-    );
+  //Slideshow effect for Ken Burns
+  const [bgIndex, setBgIndex] = useState(
+    Math.floor(Math.random() * backgrounds.length)
+  );
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setBgIndex((prev) => (prev + 1) % backgrounds.length);
-        }, 5000); //edit this num to change duration of each picture
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBgIndex((prev) => (prev + 1) % backgrounds.length);
+    }, 5000); //edit this num to change duration of each picture
 
-        return () => clearInterval(interval);
-    }, []);
-
-
-    return (
-        <div className="min-h-screen flex">
-            {/* Left Side - Decorative */}
-            <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-amber-800 via-amber-900 to-stone-900 relative overflow-hidden">
-                {backgrounds.map((bg, index) => (
-            <img
-                key={index}
-                src={bg}
-                alt=""
-                className={`
-                absolute inset-0 h-full w-full object-cover
-                motion-safe:animate-kenburns
-                transition-opacity duration-[2000ms] ease-in-out
-                ${index === bgIndex ? "opacity-100" : "opacity-0"}
-                `}
-            />
-            ))}
-
-                <div className="absolute inset-0 bg-stone-900/60" />
+    return () => clearInterval(interval);
+  }, []);
 
 
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d4a574%22 fill-opacity=%220.08%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-30"></div>
-                <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-center">
-                    <MapPin className="w-20 h-20 text-amber-400 mb-6" />
-                    <h1 className="text-4xl font-serif font-bold text-amber-100 mb-4">
-                        Lakbay Intramuros
-                    </h1>
-                    <p className="text-amber-200/80 text-lg max-w-md leading-relaxed">
-                        Step back in time and explore the historic walled city of Manila. 
-                        Discover centuries of heritage, culture, and stories waiting to be told.
-                    </p>
-                    <div className="mt-12 flex items-center gap-2 text-amber-300/60">
-                        <div className="w-16 h-px bg-amber-300/40"></div>
-                        <span className="text-sm font-medium tracking-wider">EST. 1571</span>
-                        <div className="w-16 h-px bg-amber-300/40"></div>
-                    </div>
-                </div>
-            </div>
+  return (
+    <div className="min-h-screen flex">
+      {/* Left Side - Decorative */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-amber-800 via-amber-900 to-stone-900 relative overflow-hidden">
+        {backgrounds.map((bg, index) => (
+      <img
+        key={index}
+        src={bg}
+        alt=""
+        className={`
+        absolute inset-0 h-full w-full object-cover
+        motion-safe:animate-kenburns
+        transition-opacity duration-[2000ms] ease-in-out
+        ${index === bgIndex ? "opacity-100" : "opacity-0"}
+        `}
+      />
+      ))}
 
-            {/* Right Side - Login Form */}
-            <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gradient-to-b from-amber-50 to-stone-100">
-                <div className="w-full max-w-md">
-                    {/* Mobile Logo */}
-                    <div className="lg:hidden text-center mb-8">
-                        <MapPin className="w-12 h-12 text-amber-700 mx-auto mb-2" />
-                        <h1 className="text-2xl font-serif font-bold text-stone-800">Lakbay Intramuros</h1>
-                    </div>
+        <div className="absolute inset-0 bg-stone-900/60" />
 
-                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-200/50 p-6 sm:p-8">
-                        {/* Back to Home Link */}
-                        <Link 
-                            to="/" 
-                            className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 mb-6 transition-colors"
-                        >
-                            <ArrowLeft className="w-4 h-4" />
-                            Back to Home
-                        </Link>
 
-                        <div className="text-center mb-8">
-                            <h2 className="text-2xl font-serif font-bold text-stone-800">Welcome Back</h2>
-                            <p className="text-stone-600 mt-2">Sign in to continue your journey</p>
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="space-y-5">
-                            <div>
-                                <label className="block text-sm font-medium text-stone-700 mb-2">
-                                    Email Address
-                                </label>
-                                <div className="relative">
-                                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.email ? 'text-red-400' : 'text-stone-400'}`} />
-                                    <input
-                                        type="email"
-                                        value={email}
-                                        onChange={handleEmailChange}
-                                        className={`w-full pl-11 pr-4 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
-                                            errors.email 
-                                                ? 'border-red-300 focus:ring-red-500 focus:border-transparent' 
-                                                : 'border-amber-200 focus:ring-amber-500 focus:border-transparent'
-                                        }`}
-                                        placeholder="Enter your email"
-                                    />
-                                </div>
-                                {errors.email && (
-                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
-                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
-                                        {errors.email}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-stone-700 mb-2">
-                                    Password
-                                </label>
-                                <div className="relative">
-                                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.password ? 'text-red-400' : 'text-stone-400'}`} />
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        value={password}
-                                        onChange={handlePasswordChange}
-                                        className={`w-full pl-11 pr-12 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
-                                            errors.password 
-                                                ? 'border-red-300 focus:ring-red-500 focus:border-transparent' 
-                                                : 'border-amber-200 focus:ring-amber-500 focus:border-transparent'
-                                        }`}
-                                        placeholder="Enter your password"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-                                    >
-                                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                                    </button>
-                                </div>
-                                {errors.password && (
-                                    <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
-                                        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
-                                        {errors.password}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="flex items-center justify-end">
-                                <Link 
-                                    to="/forgot-password" 
-                                    className="text-sm text-amber-700 hover:text-amber-800 font-medium"
-                                >
-                                    Forgot password?
-                                </Link>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full py-3 bg-gradient-to-r from-amber-700 to-amber-800 hover:from-amber-800 hover:to-amber-900 text-white font-semibold rounded-xl shadow-lg shadow-amber-900/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {loading ? (
-                                    <span className="loading loading-spinner loading-sm"></span>
-                                ) : (
-                                    "Sign In"
-                                )}
-                            </button>
-                        </form>
-
-                        <div className="mt-6 text-center">
-                            <p className="text-stone-600">
-                                Don't have an account?{" "}
-                                <Link to="/signup" className="text-amber-700 hover:text-amber-800 font-semibold">
-                                    Sign up
-                                </Link>
-                            </p>
-                        </div>
-
-                        {/* <div className="mt-8 pt-6 border-t border-amber-200/50">
-                            <p className="text-center text-sm text-stone-500">
-                                Want to become a tour guide?{" "}
-                                <Link to="/signup" className="text-amber-700 hover:text-amber-800 font-medium">
-                                    Sign up and apply
-                                </Link>
-                            </p>
-                        </div> */}
-                    </div>
-                </div>
-            </div>
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d4a574%22 fill-opacity=%220.08%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-30"></div>
+        <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-center">
+          <MapPin className="w-20 h-20 text-amber-400 mb-6" />
+          <h1 className="text-4xl font-serif font-bold text-amber-100 mb-4">
+            Lakbay Intramuros
+          </h1>
+          <p className="text-amber-200/80 text-lg max-w-md leading-relaxed">
+            Step back in time and explore the historic walled city of Manila. 
+            Discover centuries of heritage, culture, and stories waiting to be told.
+          </p>
+          <div className="mt-12 flex items-center gap-2 text-amber-300/60">
+            <div className="w-16 h-px bg-amber-300/40"></div>
+            <span className="text-sm font-medium tracking-wider">EST. 1571</span>
+            <div className="w-16 h-px bg-amber-300/40"></div>
+          </div>
         </div>
-    );
+      </div>
+
+      {/* Right Side - Login Form */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gradient-to-b from-amber-50 to-stone-100">
+        <div className="w-full max-w-md">
+          {/* Mobile Logo */}
+          <div className="lg:hidden text-center mb-8">
+            <MapPin className="w-12 h-12 text-amber-700 mx-auto mb-2" />
+            <h1 className="text-2xl font-serif font-bold text-stone-800">Lakbay Intramuros</h1>
+          </div>
+
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-amber-200/50 p-6 sm:p-8">
+            {/* Back to Home Link */}
+            <Link 
+              to="/" 
+              className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 mb-6 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Home
+            </Link>
+
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-serif font-bold text-stone-800">Welcome Back</h2>
+              <p className="text-stone-600 mt-2">Sign in to continue your journey</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-2">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.email ? 'text-red-400' : 'text-stone-400'}`} />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={handleEmailChange}
+                    className={`w-full pl-11 pr-4 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                      errors.email 
+                        ? 'border-red-300 focus:ring-red-500 focus:border-transparent' 
+                        : 'border-amber-200 focus:ring-amber-500 focus:border-transparent'
+                    }`}
+                    placeholder="Enter your email"
+                  />
+                </div>
+                {errors.email && (
+                  <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                    <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                    {errors.email}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${errors.password ? 'text-red-400' : 'text-stone-400'}`} />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={handlePasswordChange}
+                    className={`w-full pl-11 pr-12 py-3 bg-amber-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-stone-800 placeholder-stone-400 ${
+                      errors.password 
+                        ? 'border-red-300 focus:ring-red-500 focus:border-transparent' 
+                        : 'border-amber-200 focus:ring-amber-500 focus:border-transparent'
+                    }`}
+                    placeholder="Enter your password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                    <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
+                    {errors.password}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end">
+                <Link 
+                  to="/forgot-password" 
+                  className="text-sm text-amber-700 hover:text-amber-800 font-medium"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-gradient-to-r from-amber-700 to-amber-800 hover:from-amber-800 hover:to-amber-900 text-white font-semibold rounded-xl shadow-lg shadow-amber-900/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="loading loading-spinner loading-sm"></span>
+                ) : (
+                  "Sign In"
+                )}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-stone-600">
+                Don't have an account?{" "}
+                <Link to="/signup" className="text-amber-700 hover:text-amber-800 font-semibold">
+                  Sign up
+                </Link>
+              </p>
+            </div>
+
+            {/* <div className="mt-8 pt-6 border-t border-amber-200/50">
+              <p className="text-center text-sm text-stone-500">
+                Want to become a tour guide?{" "}
+                <Link to="/signup" className="text-amber-700 hover:text-amber-800 font-medium">
+                  Sign up and apply
+                </Link>
+              </p>
+            </div> */}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default LoginPage;

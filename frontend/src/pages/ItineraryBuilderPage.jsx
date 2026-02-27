@@ -377,7 +377,7 @@ const ItineraryBuilderPage = () => {
                                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-terracotta-600 to-terracotta-500 hover:from-terracotta-700 hover:to-terracotta-600 text-white font-medium rounded-lg transition-all shadow-sm"
                                     >
                                         <Sparkles className="w-4 h-4" />
-                                        Magic Generate
+                                        Auto-suggest
                                     </button>
                                     {/* Preferences Button - next to Magic Generate */}
                                     {isAuthenticated && (

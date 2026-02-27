@@ -150,6 +150,18 @@ export const INTRAMUROS_LOCATIONS = [
         estimatedTime: 30,
         image: `${path}silahis.jpg`,
     },
+    {
+        id: 'destileria',
+        placeId: 'destileria',
+        name: 'Destileria Limtuaco Museum',
+        category: 'museums',
+        lat: 14.592424351153873,
+        lng: 120.9775395765206,
+        address: 'San Juan de Letran, Intramuros, Manila',
+        description: 'The oldest distillery in the Philippines, established in 1852.',
+        estimatedTime: 30,
+        image: `${path}destileria.jpg`,
+    },
 
     // Forts & Walls
     {
@@ -348,6 +360,18 @@ export const INTRAMUROS_LOCATIONS = [
         estimatedTime: 60,
         image: `${path}sky-deck.jpg`,
     },
+    {
+        id: 'la-cathedral',
+        placeId: 'la-cathedral',
+        name: 'La Cathedral Cafe',
+        category: 'food',
+        lat: 14.591363001332375, 
+        lng:  120.97423856437429,
+        address: 'Cabildo St, Intramuros, Manila',
+        description: 'Cafe and restaurant behind the Manila Cathedral Church.',
+        estimatedTime: 35,
+        image: `${path}la-cathedral.jpg`,
+    },
 
     //Shops
     {
@@ -361,6 +385,30 @@ export const INTRAMUROS_LOCATIONS = [
         description: 'Leading supplier of imported products from Russia.',
         estimatedTime: 60,
         image: `${path}grotto-hookah.jpg`,
+    }, 
+    {
+        id: 'manila-canvas',
+        placeId: 'manila-canvas',
+        name: 'Manila Canvas - Fort Santiago',
+        category: 'shops',
+        lat: 14.592774366201786,
+        lng: 120.97121748886062,
+        address: 'Fort Santiago, Intramuros, Manila',
+        description: 'Cafe and souvenir shop in one',
+        estimatedTime: 30,
+        image: `${path}manila-canvas.jpg`,
+    }, 
+    {
+        id: 'tesoros',
+        placeId: 'tesoros',
+        name: 'Tesoros',
+        category: 'shops',
+        lat: 14.592654964730523, 
+        lng: 120.97134623488817,
+        address: 'Fort Santiago, Intramuros, Manila',
+        description: 'Cafe and souvenir shop in one',
+        estimatedTime: 30,
+        image: `${path}tesoros.jpg`,
     }, 
 ];
 

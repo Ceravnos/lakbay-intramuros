@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { 
     Compass, Clock, CheckCircle, Calendar, Users, MapPin,
     LogOut, RefreshCw, User, Phone, Mail, ChevronRight,
-    History, ClipboardList, Loader2, Map, AlertCircle, BadgeCheck,
+    History, ClipboardList, Loader2, Map, AlertCircle,
     XCircle
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -11,26 +11,8 @@ import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/axios";
 import { socket } from '../../lib/socket'
 
-const activityStyles = {
-    active: {
-        bg: "bg-green-600",
-        knob: "translate-x-6",
-    },
-    working: {
-        bg: "bg-orange-500",
-        knob: "translate-x-1",
-    },
-    inactive: {
-        bg: "bg-red-500",
-        knob: "translate-x-1",
-    },
-};
-
 const GuideDashboard = () => {
     const { user, logout, toggleGuideMode, toggleActivityStatus, refreshUser } = useAuth();
-
-    const currentActivity =
-        activityStyles[user?.activityStatus] || activityStyles.inactive;
 
     const [activeTab, setActiveTab] = useState("pending");
     const [pendingBookings, setPendingBookings] = useState([]);
@@ -235,39 +217,39 @@ const GuideDashboard = () => {
 
                         {/* Right Section */}
                         <div className="flex items-center gap-3">
-                            {/* Status Badge */}
-                            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-full">
-                                <BadgeCheck className="w-4 h-4 text-green-600" />
-                                <span className="text-xs font-medium text-green-700">Approved</span>
-                            </div>
-
-                            {/* Activity Status Toggle */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-stone-700">Activity:</span>
-
-                                <button
-                                    onClick={() => {
-                                        if (user?.activityStatus === "working") {
-                                            toast.error("Please finish your current tour first.");
-                                            toast.error("Currently working — cannot toggle status to active.");
-                                            return;
-                                        }
-
-                                        handleToggleActivityStatus();
-                                    }}
-                                    disabled={statusLoading}
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                                        ${currentActivity.bg}
-                                    `}
-                                >
-                                    <span
-                                        className={`inline-block h-4 w-4 bg-white rounded-full transform transition-transform
-                                            ${currentActivity.knob}
-                                        `}
-                                    />
-                                </button>
-
-                            </div>
+                            {/* Activity Status Indicator */}
+                            <button
+                                onClick={() => {
+                                    if (user?.activityStatus === "working") {
+                                        toast.error("Please finish your current tour first.");
+                                        return;
+                                    }
+                                    handleToggleActivityStatus();
+                                }}
+                                disabled={statusLoading}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-full hover:bg-stone-100 transition-colors disabled:opacity-50"
+                            >
+                                {statusLoading ? (
+                                    <Loader2 className="w-3 h-3 animate-spin text-stone-500" />
+                                ) : (
+                                    <span className={`w-3 h-3 rounded-full ${
+                                        user?.activityStatus === 'active' 
+                                            ? 'bg-green-500' 
+                                            : user?.activityStatus === 'working' 
+                                                ? 'bg-orange-500 animate-pulse' 
+                                                : 'bg-red-500'
+                                    }`} />
+                                )}
+                                <span className={`text-sm font-medium capitalize ${
+                                    user?.activityStatus === 'active' 
+                                        ? 'text-green-700' 
+                                        : user?.activityStatus === 'working' 
+                                            ? 'text-orange-700' 
+                                            : 'text-red-700'
+                                }`}>
+                                    {user?.activityStatus || 'inactive'}
+                                </span>
+                            </button>
                             
                             {/* Switch to Tourist Mode Button */}
                             <button
@@ -301,7 +283,7 @@ const GuideDashboard = () => {
 
             <main className="max-w-6xl mx-auto px-4 py-8">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-4 gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     <div className="bg-white rounded-xl border border-stone-200 p-5">
                         <div className="flex items-center justify-between">
                             <div>

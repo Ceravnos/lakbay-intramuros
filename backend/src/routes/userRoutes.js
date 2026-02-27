@@ -57,4 +57,34 @@ router.put("/personalization", protect, async (req, res) => {
     }
 });
 
+// Update user profile picture
+router.put("/profile-picture", protect, async (req, res) => {
+    try {
+        const { profilePicture } = req.body;
+        
+        if (!profilePicture) {
+            return res.status(400).json({ message: "Profile picture is required" });
+        }
+
+        // Validate base64 image (basic check)
+        if (!profilePicture.startsWith('data:image/')) {
+            return res.status(400).json({ message: "Invalid image format" });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.user._id,
+            { profilePicture },
+            { new: true }
+        ).select("profilePicture");
+
+        res.json({ 
+            message: "Profile picture updated successfully",
+            profilePicture: user.profilePicture 
+        });
+    } catch (error) {
+        console.error("Error updating profile picture:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 export default router;

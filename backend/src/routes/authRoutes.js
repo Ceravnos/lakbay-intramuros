@@ -5,7 +5,6 @@ import {
     loginAdmin,
     applyForGuide,
     toggleGuideMode,
-    toggleActivityStatus,
     getMe,
     forgotPassword,
     verifyOtp,
@@ -30,6 +29,5 @@ router.post("/reset-password", resetPassword);
 router.get("/me", protect, updateLastActivity, getMe);
 router.post("/apply-guide", protect, updateLastActivity, applyForGuide);
 router.put("/toggle-guide-mode", protect, updateLastActivity, toggleGuideMode);
-router.put("/toggle-activity-status", protect, updateLastActivity, toggleActivityStatus);
 
 export default router;

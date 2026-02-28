@@ -29,7 +29,7 @@ const App = () => {
       <div className="relative min-h-screen bg-white">
         <Routes>
           {/* Public Landing Page with Map */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<GuestRoute><LandingPage /></GuestRoute>} />
 
           {/* Protected Routes - Require Login */}
           <Route path="/dashboard" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />

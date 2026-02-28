@@ -2,7 +2,6 @@ import Booking from "../models/Booking.js";
 import User from "../models/User.js";
 import Itinerary from "../models/Itinerary.js";
 import { setGuideActivityStatus } from "../utils/guideActivity.js";
-import { io } from "../app.js";
 
 // @desc    Create a new booking request (Tourist only)
 // @route   POST /api/bookings
@@ -83,12 +82,6 @@ export const createBooking = async (req, res) => {
         // Update itinerary status
         itinerary.status = "booked";
         await itinerary.save();
-
-         // 🔔 NOTIFY THE GUIDE
-        io.to(guideId.toString()).emit("booking:requested", {
-            bookingId: booking._id,
-            message: `New booking request from ${tourist.fullName}`,
-        });
 
         res.status(201).json({
             message: "Booking request submitted successfully",
@@ -224,14 +217,8 @@ export const acceptBooking = async (req, res) => {
         await setGuideActivityStatus(guide, "working");
 
         const updatedBooking = await Booking.findById(id)
-            .populate("touristId", "fullName email")
+            .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId");
-
-        // 🔔 Emit to the tourist's room
-        io.to(booking.touristId.toString()).emit("booking:accepted", {
-            bookingId: booking._id,
-            message: `Your booking "${booking.tripDetails?.title}" has been accepted by the guide!`,
-        });
 
         res.json({
             message: "Booking accepted successfully",
@@ -274,14 +261,8 @@ export const rejectBooking = async (req, res) => {
         await setGuideActivityStatus(guide, "active");
 
         const updatedBooking = await Booking.findById(id)
-            .populate("touristId", "fullName email")
+            .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId");
-
-        // emit to the tourist
-        io.to(booking.touristId.toString()).emit("booking:rejected", {
-            bookingId: booking._id,
-            message: "Your booking was rejected by the guide",
-        });
 
         res.json({
             message: "Booking rejected successfully",
@@ -326,14 +307,8 @@ export const completeBooking = async (req, res) => {
         await setGuideActivityStatus(guide, "active");
 
         const updatedBooking = await Booking.findById(id)
-            .populate("touristId", "fullName email")
+            .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId");
-
-        
-        io.to(booking.touristId.toString()).emit("booking:completed", {
-            message: "Your booking has been completed by the guide",
-            booking
-        });
 
         res.json({
             message: "Booking marked as complete",

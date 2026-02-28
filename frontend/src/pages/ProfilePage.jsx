@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { 
   User, Mail, Phone, FileText, Upload, CheckCircle, 
-  Clock, XCircle, Loader2, Shield, Compass, ToggleLeft, ToggleRight, MapPin, Star, Camera
+  Clock, XCircle, Loader2, Shield, Compass, ToggleLeft, ToggleRight, MapPin, Star, Camera, ChevronLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
@@ -12,6 +12,7 @@ import api from '../lib/axios';
 const ProfilePage = () => {
   const { user, applyForGuide, hasPendingGuideApplication, isApprovedGuide, isGuideMode, toggleGuideMode, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [togglingMode, setTogglingMode] = useState(false);
   const [uploadingPicture, setUploadingPicture] = useState(false);
   
@@ -42,6 +43,16 @@ const ProfilePage = () => {
           const reader = new FileReader();
           reader.onloadend = async () => {
             try {
+              // Validate the base64 result
+              if (!reader.result || !reader.result.startsWith('data:image/')) {
+                throw new Error('Invalid image data');
+              }
+              
+              // Check minimum size (at least 100 bytes of base64 data)
+              if (reader.result.length < 100) {
+                throw new Error('Image is too small or corrupted');
+              }
+              
               await api.put('/users/profile-picture', {
                 profilePicture: reader.result
               });
@@ -50,13 +61,20 @@ const ProfilePage = () => {
                 await refreshUser();
               }
               } catch (error) {
-                  toast.error('Failed to update profile picture');
+                  console.error('Profile picture upload error:', error);
+                  const errorMessage = error.response?.data?.message || error.message || 'Failed to update profile picture';
+                  toast.error(errorMessage);
               } finally {
                   setUploadingPicture(false);
               }
           };
+          reader.onerror = () => {
+            toast.error('Failed to read image file');
+            setUploadingPicture(false);
+          };
           reader.readAsDataURL(file);
       } catch (error) {
+          console.error('File processing error:', error);
           toast.error('Failed to process image');
           setUploadingPicture(false);
       }
@@ -152,6 +170,19 @@ const ProfilePage = () => {
           <Navbar />
           
           <div className="max-w-3xl mx-auto px-4 py-8">
+              {/* Breadcrumb Navigation */}
+              {location.pathname !== "/dashboard" && (
+                <nav className="flex items-center gap-2 text-sm text-stone-600 mb-6">
+                  <button
+                    onClick={() => navigate(isGuideMode ? "/guide/dashboard" : "/dashboard")}
+                    className="flex items-center gap-1 hover:text-stone-800 transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Back to {isGuideMode ? "Guide Dashboard" : "Dashboard"}
+                  </button>
+                </nav>
+              )}
+              
               {/* Profile Header */}
               <div className="bg-white rounded-2xl border border-stone-200 p-6 mb-6">
                   <div className="flex items-start gap-4">
@@ -550,9 +581,12 @@ const ProfilePage = () => {
                               onClick={async () => {
                                   setTogglingMode(true);
                                   try {
-                                      await toggleGuideMode();
-                                      if (!isGuideMode) {
+                                      const result = await toggleGuideMode();
+                                      toast.success(result.message);
+                                      if (result.isGuideMode) {
                                           navigate('/guide/dashboard');
+                                      } else {
+                                          navigate('/dashboard');
                                       }
                                   } catch (error) {
                                       toast.error('Failed to switch mode');

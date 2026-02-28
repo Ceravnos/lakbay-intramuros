@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
     "start": "npm run start --prefix backend"
   },
@@ -20,5 +21,8 @@
   "homepage": "https://github.com/Ceravnos/lakbay-intramuros#readme",
   "dependencies": {
     "@react-google-maps/api": "^2.20.8"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

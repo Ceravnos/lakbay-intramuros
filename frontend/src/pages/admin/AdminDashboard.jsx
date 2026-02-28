@@ -4,7 +4,8 @@ import {
     Shield, Users, Clock, CheckCircle, XCircle, 
     LogOut, Eye, RefreshCw, Search,
     UserCheck, UserX, FileText, MapPin, Calendar,
-    Loader2, X, FileQuestion
+    Loader2, X, FileQuestion, Trash2, Edit3, 
+    UserCog, AlertTriangle, ShieldCheck, ShieldOff
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
@@ -34,6 +35,14 @@ const AdminDashboard = () => {
     const [actionLoading, setActionLoading] = useState(false);
     const [rejectionReason, setRejectionReason] = useState("");
     const [documentRequestReason, setDocumentRequestReason] = useState("");
+    // User Management State
+    const [allUsers, setAllUsers] = useState([]);
+    const [userSearchTerm, setUserSearchTerm] = useState("");
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [showUserModal, setShowUserModal] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [userToDelete, setUserToDelete] = useState(null);
+    const [mainTab, setMainTab] = useState("guides"); // "guides" or "users"
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
@@ -44,18 +53,20 @@ const AdminDashboard = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [statsRes, pendingRes, allRes, activeRes, bookingStatsRes] = await Promise.all([
+            const [statsRes, pendingRes, allRes, activeRes, bookingStatsRes, usersRes] = await Promise.all([
                 api.get("/admin/stats"),
                 api.get("/admin/pending-guides"),
                 api.get("/admin/guides"),
                 api.get("/admin/active-guides"),
                 api.get("/bookings/stats").catch(() => ({ data: {} })),
+                api.get("/admin/users").catch(() => ({ data: [] })),
             ]);
             setStats(statsRes.data);
             setPendingGuides(pendingRes.data);
             setAllGuides(allRes.data);
             setActiveGuides(activeRes.data);
             setBookingStats(bookingStatsRes.data);
+            setAllUsers(usersRes.data);
         } catch (error) {
             toast.error("Failed to fetch data");
             console.error(error);
@@ -112,58 +123,125 @@ const AdminDashboard = () => {
     };
 
     const handleLogout = async () => {
-        try {
-            if (user?.role === "guide") {
-                await api.put("/auth/toggle-activity-status", {
-                    forceInactive: true
-                });
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            logout();
-            navigate("/login");
-        }
-    };
+  try {
+    if (user?.role === "guide") {
+      await api.put("/auth/toggle-activity-status", {
+        forceInactive: true
+      });
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    logout();
+    navigate("/login");
+  }
+};
 
+// User Management Handlers
+const handleUpdateUser = async (userId, updates) => {
+  setActionLoading(true);
+  try {
+    await api.put(`/admin/user/${userId}`, updates);
+    toast.success("User updated successfully!");
+    fetchData();
+    setShowUserModal(false);
+    setSelectedUser(null);
+  } catch (error) {
+    toast.error(error.response?.data?.message || "Failed to update user");
+  } finally {
+    setActionLoading(false);
+  }
+};
+
+    const handleDeleteUser = async (userId) => {
+  setActionLoading(true);
+  try {
+    await api.delete(`/admin/user/${userId}`);
+    toast.success("User permanently deleted");
+    fetchData();
+    setShowDeleteModal(false);
+    setUserToDelete(null);
+  } catch (error) {
+    toast.error(error.response?.data?.message || "Failed to delete user");
+  } finally {
+    setActionLoading(false);
+  }
+};
+
+const openUserModal = (userItem) => {
+  setSelectedUser(userItem);
+  setShowUserModal(true);
+};
+
+const openDeleteModal = (userItem) => {
+  setUserToDelete(userItem);
+  setShowDeleteModal(true);
+};
 
     const openGuideModal = (guide) => {
-        setSelectedGuide(guide);
-        setShowModal(true);
-    };
+  setSelectedGuide(guide);
+  setShowModal(true);
+};
 
-    const filteredGuides = allGuides
-    .filter((guide) => {
-        if (activeTab === "pending") {
-            return guide.status === "pending";
-        }
+const filteredGuides = allGuides
+  .filter((guide) => {
+    if (activeTab === "pending") {
+      return guide.status === "pending";
+    }
 
-        if (activeTab === "active") {
-            return guide.activityStatus === "active";
-        }
+    if (activeTab === "active") {
+      return guide.activityStatus === "active";
+    }
 
-        return true; // "all"
-    })
-    .filter((guide) =>
-        guide.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        guide.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    return true; // "all"
+  })
+  .filter((guide) =>
+    guide.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    guide.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
+    // Filter users for user management
+const filteredUsers = allUsers.filter((u) =>
+  u.fullName?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+  u.email?.toLowerCase().includes(userSearchTerm.toLowerCase())
+);
 
-    const getStatusBadge = (status) => {
-        switch (status) {
-            case "pending":
-                return <span className="px-2.5 py-1 text-xs font-medium bg-sand-100 text-sand-700 border border-sand-200 rounded-full">Pending</span>;
-            case "approved":
-                return <span className="px-2.5 py-1 text-xs font-medium bg-sage-100 text-sage-700 border border-sage-200 rounded-full">Approved</span>;
-            case "rejected":
-                return <span className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-600 border border-red-200 rounded-full">Rejected</span>;
-            case "documents_requested":
-                return <span className="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full">Documents Requested</span>;
-            default:
-                return null;
-        }
-    };
+const getStatusBadge = (status) => {
+  switch (status) {
+    case "pending":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-sand-100 text-sand-700 border border-sand-200 rounded-full">Pending</span>;
+    case "approved":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-sage-100 text-sage-700 border border-sage-200 rounded-full">Approved</span>;
+    case "rejected":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-600 border border-red-200 rounded-full">Rejected</span>;
+    case "documents_requested":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full">Documents Requested</span>;
+    default:
+      return null;
+  }
+};
+
+const getRoleBadge = (role) => {
+  switch (role) {
+    case "tourist":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-full">Tourist</span>;
+    case "guide":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-sage-100 text-sage-700 border border-sage-200 rounded-full">Guide</span>;
+    default:
+      return <span className="px-2.5 py-1 text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200 rounded-full">{role}</span>;
+  }
+};
+
+const getAccountStatusBadge = (status) => {
+  switch (status) {
+    case "active":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-green-50 text-green-600 border border-green-200 rounded-full">Active</span>;
+    case "suspended":
+      return <span className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-600 border border-red-200 rounded-full">Suspended</span>;
+    default:
+      return <span className="px-2.5 py-1 text-xs font-medium bg-green-50 text-green-600 border border-green-200 rounded-full">Active</span>;
+  }
+};
 
     return (
         <div className="min-h-screen bg-stone-50">
@@ -198,6 +276,34 @@ const AdminDashboard = () => {
             </header>
 
             <main className="max-w-7xl mx-auto px-4 py-8">
+                {/* Main Tab Navigation */}
+                <div className="flex gap-2 mb-6">
+                    <button
+                        onClick={() => setMainTab("guides")}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                            mainTab === "guides"
+                                ? "bg-stone-800 text-white"
+                                : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                        }`}
+                    >
+                        <UserCheck className="w-4 h-4" />
+                        Guide Management
+                    </button>
+                    <button
+                        onClick={() => setMainTab("users")}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                            mainTab === "users"
+                                ? "bg-stone-800 text-white"
+                                : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                        }`}
+                    >
+                        <UserCog className="w-4 h-4" />
+                        User Management ({allUsers.length})
+                    </button>
+                </div>
+
+                {mainTab === "guides" && (
+                <>
                 {/* Bento Grid Stats */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {/* Total Guides - Large */}
@@ -384,6 +490,127 @@ const AdminDashboard = () => {
                         )}
                     </div>
                 </div>
+                </>
+                )}
+
+                {/* User Management Section */}
+                {mainTab === "users" && (
+                <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 border-b border-stone-200 gap-4">
+                        <div>
+                            <h2 className="text-lg font-semibold text-stone-800">All Users</h2>
+                            <p className="text-stone-500 text-sm">Manage user roles, status, and verification</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <div className="relative flex-1 sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                                <input
+                                    type="text"
+                                    value={userSearchTerm}
+                                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                                    placeholder="Search users..."
+                                    className="w-full pl-10 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-lg text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:border-transparent"
+                                />
+                            </div>
+                            <button
+                                onClick={fetchData}
+                                disabled={loading}
+                                className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg transition-colors"
+                            >
+                                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Users Table */}
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-stone-50 border-b border-stone-200">
+                                <tr>
+                                    <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">User</th>
+                                    <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Role</th>
+                                    <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Status</th>
+                                    <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Verified</th>
+                                    <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Joined</th>
+                                    <th className="text-right px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-stone-100">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-5 py-12 text-center">
+                                            <Loader2 className="w-6 h-6 text-stone-400 animate-spin mx-auto" />
+                                        </td>
+                                    </tr>
+                                ) : filteredUsers.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-5 py-12 text-center">
+                                            <Users className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                                            <p className="text-stone-500">No users found</p>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredUsers.map((userItem) => (
+                                        <tr key={userItem._id} className="hover:bg-stone-50 transition-colors">
+                                            <td className="px-5 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                                        <span className="text-blue-700 font-semibold">
+                                                            {userItem.fullName?.charAt(0).toUpperCase() || "?"}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-stone-800">{userItem.fullName}</p>
+                                                        <p className="text-stone-500 text-sm">{userItem.email}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">{getRoleBadge(userItem.role)}</td>
+                                            <td className="px-5 py-4">{getAccountStatusBadge(userItem.accountStatus)}</td>
+                                            <td className="px-5 py-4">
+                                                {userItem.isVerified ? (
+                                                    <span className="flex items-center gap-1 text-green-600 text-sm">
+                                                        <ShieldCheck className="w-4 h-4" /> Verified
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1 text-stone-400 text-sm">
+                                                        <ShieldOff className="w-4 h-4" /> Unverified
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-4 text-stone-500 text-sm">
+                                                {new Date(userItem.createdAt).toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    year: 'numeric'
+                                                })}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => openUserModal(userItem)}
+                                                        className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg transition-colors"
+                                                        title="Edit User"
+                                                    >
+                                                        <Edit3 className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => openDeleteModal(userItem)}
+                                                        className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
+                                                        title="Delete User"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                )}
             </main>
 
             {/* Guide Detail Modal */}
@@ -556,6 +783,192 @@ const AdminDashboard = () => {
                                     <p className="text-stone-700">{selectedGuide.documentRequestReason}</p>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* User Edit Modal */}
+            {showUserModal && selectedUser && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
+                        <div className="flex items-center justify-between p-6 border-b border-stone-200">
+                            <h2 className="text-xl font-serif font-semibold text-stone-800">Edit User</h2>
+                            <button
+                                onClick={() => {
+                                    setShowUserModal(false);
+                                    setSelectedUser(null);
+                                }}
+                                className="text-stone-400 hover:text-stone-600 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* User Info Header */}
+                            <div className="flex items-center gap-4 pb-4 border-b border-stone-100">
+                                <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <span className="text-blue-700 font-bold text-xl">
+                                        {selectedUser.fullName?.charAt(0).toUpperCase() || "?"}
+                                    </span>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold text-stone-800">{selectedUser.fullName}</h3>
+                                    <p className="text-stone-500">{selectedUser.email}</p>
+                                </div>
+                            </div>
+
+                            {/* Editable Fields */}
+                            <div className="space-y-4">
+                                {/* Role */}
+                                <div>
+                                    <label className="block text-stone-600 text-sm font-medium mb-2">Role</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleUpdateUser(selectedUser._id, { role: "tourist" })}
+                                            disabled={actionLoading || selectedUser.role === "tourist"}
+                                            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors ${
+                                                selectedUser.role === "tourist"
+                                                    ? "bg-blue-100 text-blue-700 border-2 border-blue-300"
+                                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                            }`}
+                                        >
+                                            Tourist
+                                        </button>
+                                        <button
+                                            onClick={() => handleUpdateUser(selectedUser._id, { role: "guide" })}
+                                            disabled={actionLoading || selectedUser.role === "guide"}
+                                            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors ${
+                                                selectedUser.role === "guide"
+                                                    ? "bg-sage-100 text-sage-700 border-2 border-sage-300"
+                                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                            }`}
+                                        >
+                                            Guide
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Account Status */}
+                                <div>
+                                    <label className="block text-stone-600 text-sm font-medium mb-2">Account Status</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleUpdateUser(selectedUser._id, { accountStatus: "active" })}
+                                            disabled={actionLoading || selectedUser.accountStatus === "active"}
+                                            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                                                selectedUser.accountStatus === "active" || !selectedUser.accountStatus
+                                                    ? "bg-green-100 text-green-700 border-2 border-green-300"
+                                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                            }`}
+                                        >
+                                            <CheckCircle className="w-4 h-4" />
+                                            Active
+                                        </button>
+                                        <button
+                                            onClick={() => handleUpdateUser(selectedUser._id, { accountStatus: "suspended" })}
+                                            disabled={actionLoading || selectedUser.accountStatus === "suspended"}
+                                            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                                                selectedUser.accountStatus === "suspended"
+                                                    ? "bg-red-100 text-red-700 border-2 border-red-300"
+                                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                            }`}
+                                        >
+                                            <XCircle className="w-4 h-4" />
+                                            Suspended
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Verification Status */}
+                                <div>
+                                    <label className="block text-stone-600 text-sm font-medium mb-2">Verification Status</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleUpdateUser(selectedUser._id, { isVerified: true })}
+                                            disabled={actionLoading || selectedUser.isVerified === true}
+                                            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                                                selectedUser.isVerified
+                                                    ? "bg-green-100 text-green-700 border-2 border-green-300"
+                                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                            }`}
+                                        >
+                                            <ShieldCheck className="w-4 h-4" />
+                                            Verified
+                                        </button>
+                                        <button
+                                            onClick={() => handleUpdateUser(selectedUser._id, { isVerified: false })}
+                                            disabled={actionLoading || selectedUser.isVerified === false}
+                                            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                                                !selectedUser.isVerified
+                                                    ? "bg-stone-200 text-stone-700 border-2 border-stone-300"
+                                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                            }`}
+                                        >
+                                            <ShieldOff className="w-4 h-4" />
+                                            Unverified
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Info Notice */}
+                            <div className="bg-stone-50 rounded-xl p-4 flex items-start gap-3">
+                                <AlertTriangle className="w-5 h-5 text-stone-400 flex-shrink-0 mt-0.5" />
+                                <p className="text-stone-500 text-sm">
+                                    Personal details like name, password, and profile settings cannot be modified by admins for security reasons.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteModal && userToDelete && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle className="w-8 h-8 text-red-600" />
+                            </div>
+                            <h2 className="text-xl font-semibold text-stone-800 mb-2">Delete User</h2>
+                            <p className="text-stone-500 mb-2">
+                                Are you sure you want to permanently delete this user?
+                            </p>
+                            <div className="bg-stone-50 rounded-lg p-3 mb-4">
+                                <p className="font-medium text-stone-800">{userToDelete.fullName}</p>
+                                <p className="text-stone-500 text-sm">{userToDelete.email}</p>
+                            </div>
+                            <p className="text-red-600 text-sm mb-6">
+                                This action cannot be undone. All user data will be permanently removed.
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => {
+                                        setShowDeleteModal(false);
+                                        setUserToDelete(null);
+                                    }}
+                                    className="flex-1 py-2.5 px-4 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-xl transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteUser(userToDelete._id)}
+                                    disabled={actionLoading}
+                                    className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {actionLoading ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Trash2 className="w-4 h-4" />
+                                            Delete
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

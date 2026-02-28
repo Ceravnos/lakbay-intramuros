@@ -110,7 +110,18 @@ const userSchema = new mongoose.Schema(
         totalRatings: {
             type: Number,
             default: 0,
-        }
+        },
+        // Account status for admin management
+        accountStatus: {
+            type: String,
+            enum: ["active", "suspended"],
+            default: "active",
+        },
+        // Verification status
+        isVerified: {
+            type: Boolean,
+            default: false,
+        },
     },
     { timestamps: true }
 );

@@ -8,6 +8,10 @@ import {
     rejectGuide,
     requestDocuments,
     getDashboardStats,
+    getAllUsers,
+    getUserById,
+    updateUser,
+    deleteUser,
 } from "../controllers/adminController.js";
 import { protect, adminOnly } from "../middleware/authMiddleware.js";
 
@@ -28,5 +32,11 @@ router.put("/approve-guide/:id", approveGuide);
 router.put("/reject-guide/:id", rejectGuide);
 router.put("/request-documents/:id", requestDocuments);
 router.get("/active-guides", getActiveGuides);
+
+// User management
+router.get("/users", getAllUsers);
+router.get("/user/:id", getUserById);
+router.put("/user/:id", updateUser);
+router.delete("/user/:id", deleteUser);
 
 export default router;

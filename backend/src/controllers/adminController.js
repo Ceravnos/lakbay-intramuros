@@ -216,3 +216,117 @@ export const getDashboardStats = async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 };
+
+// ==================== USER MANAGEMENT ====================
+
+// @desc    Get all users (masks sensitive data - no password)
+// @route   GET /api/admin/users
+export const getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find({ role: { $ne: "admin" } })
+            .select("-password -resetOtp -resetOtpExpiry")
+            .sort({ createdAt: -1 });
+
+        res.json(users);
+    } catch (error) {
+        console.error("Get all users error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+// @desc    Get single user by ID (masks sensitive data - no password)
+// @route   GET /api/admin/user/:id
+export const getUserById = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select("-password -resetOtp -resetOtpExpiry");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.role === "admin") {
+            return res.status(403).json({ message: "Cannot view admin user details" });
+        }
+
+        res.json(user);
+    } catch (error) {
+        console.error("Get user by id error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+// @desc    Update user (Admin can only update: role, accountStatus, isVerified, guideStatus)
+// @route   PUT /api/admin/user/:id
+export const updateUser = async (req, res) => {
+    try {
+        const { role, accountStatus, isVerified, guideStatus } = req.body;
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.role === "admin") {
+            return res.status(403).json({ message: "Cannot modify admin users" });
+        }
+
+        // Only allow updating specific fields (not personal details like name, bio, password)
+        if (role !== undefined && ["tourist", "guide"].includes(role)) {
+            user.role = role;
+        }
+
+        if (accountStatus !== undefined && ["active", "suspended"].includes(accountStatus)) {
+            user.accountStatus = accountStatus;
+        }
+
+        if (isVerified !== undefined && typeof isVerified === "boolean") {
+            user.isVerified = isVerified;
+        }
+
+        if (guideStatus !== undefined && [null, "pending", "approved", "rejected", "documents_requested"].includes(guideStatus)) {
+            user.guideStatus = guideStatus;
+        }
+
+        await user.save();
+
+        // Return updated user without sensitive data
+        const updatedUser = await User.findById(user._id)
+            .select("-password -resetOtp -resetOtpExpiry");
+
+        res.json({
+            message: "User updated successfully",
+            user: updatedUser,
+        });
+    } catch (error) {
+        console.error("Update user error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+// @desc    Delete user (Hard delete - permanently removes user from database)
+// @route   DELETE /api/admin/user/:id
+export const deleteUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.role === "admin") {
+            return res.status(403).json({ message: "Cannot delete admin users" });
+        }
+
+        // Hard delete - permanently remove from database
+        await User.findByIdAndDelete(req.params.id);
+
+        res.json({
+            message: "User permanently deleted",
+            deletedUserId: req.params.id,
+        });
+    } catch (error) {
+        console.error("Delete user error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};

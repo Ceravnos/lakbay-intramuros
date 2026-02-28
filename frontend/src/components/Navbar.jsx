@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link, useNavigate } from "react-router"
+import { Link, useNavigate, useLocation } from "react-router"
 import { PlusIcon, LogOut, Compass, Shield, MapPin, ChevronDown, ToggleLeft, ToggleRight, Loader2, User } from "lucide-react"
 import toast from "react-hot-toast"
 import { useAuth } from "../context/AuthContext"
@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext"
 const Navbar = () => {
   const { user, isAuthenticated, logout, isApprovedGuide, isGuideMode, toggleGuideMode } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [togglingMode, setTogglingMode] = useState(false);
 
   const handleLogout = () => {
@@ -22,7 +23,7 @@ const Navbar = () => {
       if (result.isGuideMode) {
         navigate("/guide/dashboard");
       } else {
-        navigate("/");
+        navigate("/dashboard");
       }
     } catch (error) {
       toast.error("Failed to toggle mode");
@@ -62,8 +63,19 @@ const Navbar = () => {
                     ) : (
                       <Compass className="w-4 h-4" />
                     )}
-                    {isGuideMode ? "Tourist Mode" : "Guide Mode"}
+                    {isGuideMode ? "Guide Mode" : "Tourist Mode"}
                   </button>
+                )}
+
+                {/* Tourist Dashboard Button */}
+                {!isGuideMode && location.pathname !== "/dashboard" && location.pathname !== "/profile" && (
+                  <Link 
+                    to="/dashboard" 
+                    className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors bg-sage-50 text-sage-700 border border-sage-200 hover:bg-sage-100"
+                  >
+                    <Compass className="w-4 h-4" />
+                    Dashboard
+                  </Link>
                 )}
 
                 {/* User dropdown */}

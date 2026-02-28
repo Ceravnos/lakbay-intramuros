@@ -4,7 +4,6 @@ import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
 import { useAuth } from '../context/AuthContext'
-import { socket } from '../lib/socket'
 
 import Navbar from '../components/Navbar'
 import RateLimitedUI from '../components/RateLimitedUI'
@@ -119,37 +118,6 @@ const HomePage = () => {
         fetchData();
     }, [isAuthenticated, user, fetchData]);
 
-    useEffect(() => {
-        if (!user) return;
-
-        const handleAcceptedBooking = (data) => {
-            toast.success(data.message); // green toast for acceptance
-            fetchData();
-        };
-
-        const handleRejectedBooking = (data) => {
-            toast.error(data.message);
-            fetchData(); // refresh bookings
-        };
-
-        const handleCompletedBooking = (data) => {
-            toast.success(data.message);
-            fetchData();
-            //activate review prompt here
-            setRatingBooking(data.booking);
-            setShowRatingPrompt(true);
-        }
-
-        socket.on("booking:accepted", handleAcceptedBooking);
-        socket.on("booking:rejected", handleRejectedBooking);
-        socket.on("booking:completed", handleCompletedBooking);
-
-        return () => {
-            socket.off("booking:accepted", handleAcceptedBooking);
-            socket.off("booking:rejected", handleRejectedBooking);
-            socket.off("booking:completed", handleCompletedBooking);
-        };
-    }, [user, fetchData]);
 
 
     const handleDeleteItinerary = async (id) => {

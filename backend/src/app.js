@@ -2,10 +2,6 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import path from "path"
-import http from "http";
-import { Server } from "socket.io";
-import jwt from "jsonwebtoken";
-import User from "./models/User.js";
 
 import travelRoutes from "./routes/travelRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -50,7 +46,7 @@ app.use(
     })
 );
 
-app.use(express.json()) // Parse the JSON bodies: req.body
+app.use(express.json({ limit: '10mb' })) // Parse the JSON bodies: req.body
 app.use(rateLimiter)
 
 // example of simple custom middleware
@@ -77,49 +73,13 @@ if(process.env.NODE_ENV === "production") {
     })
 }
 
-const server = http.createServer(app);
-
-export const io = new Server(server, {
-    cors: {
-        origin: allowedOrigins,
-        credentials: true,
-    },
-});
-
-/* ======================
-   SOCKET AUTH MIDDLEWARE
-====================== */
-io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) return next(new Error("Unauthorized"));
-
-    try {
-        const payload = jwt.verify(token, process.env.JWT_SECRET);
-
-        // Assign the userId properly
-        socket.userId = payload.userId; // ✅ THIS IS KEY
-
-        next();
-    } catch (err) {
-        console.error("Socket auth error:", err);
-        next(new Error("Unauthorized"));
-    }
-});
-
-
-
-io.on("connection", (socket) => {
-    console.log("Socket connected:", socket.userId);
-    // Join a room for this user
-    socket.join(socket.userId);
-});
 
 
 /* ======================
    START SERVER
 ====================== */
 connectDB().then(() => {
-    server.listen(PORT, () => {
+    app.listen(PORT, () => {
         console.log(`[app.js] Server started on PORT: ${PORT}`);
     });
 });

@@ -1,7 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import api from "../lib/axios";
-import { socket } from "../lib/socket";
-import toast from "react-hot-toast";
 
 const AuthContext = createContext(null);
 
@@ -37,22 +35,6 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
     };
 
-        /* ======================
-       SOCKET CONNECT / DISCONNECT
-    ====================== */
-    useEffect(() => {
-        if (!user) return;
-
-        // attach fresh token (important after login/register)
-        // Always refresh the token before connecting
-        socket.auth = { token: localStorage.getItem("token") };
-
-        if (!socket.connected) socket.connect();
-
-        return () => {
-            socket.disconnect();
-        };
-    }, [user]);
 
 
     // Unified login
@@ -104,22 +86,6 @@ export const AuthProvider = ({ children }) => {
         return res.data;
     };
 
-    //Toggle active status
-    const toggleActivityStatus = async () => {
-        if (user.activityStatus === "working") {
-            toast.error("You are currently working on a booking");
-            return;
-        }
-
-        const res = await api.put("/auth/toggle-activity-status");
-
-        setUser((prev) => ({
-            ...prev,
-            activityStatus: res.data.activityStatus,
-        }));
-
-        return res.data;
-    };
 
 
     // Silent refresh user data from server (useful after admin approval)
@@ -136,7 +102,6 @@ export const AuthProvider = ({ children }) => {
 
     // Logout
     const logout = () => {
-        socket.disconnect();
         localStorage.removeItem("token");
         delete api.defaults.headers.common["Authorization"];
         setUser(null);
@@ -168,7 +133,6 @@ export const AuthProvider = ({ children }) => {
         loginAdmin,
         applyForGuide,
         toggleGuideMode,
-        toggleActivityStatus,
         refreshUser,
         logout,
         forgotPassword,

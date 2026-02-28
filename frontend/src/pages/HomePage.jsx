@@ -222,13 +222,16 @@ const HomePage = () => {
                                 Manage your Intramuros itineraries and bookings
                             </p>
                         </div>
-                        <Link 
-                            to="/itinerary" 
-                            className="flex items-center gap-2 px-4 py-2 bg-terracotta-600 hover:bg-terracotta-700 text-white text-sm font-medium rounded-lg transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            New Itinerary
-                        </Link>
+{/* Only show New Itinerary button if user has at least one itinerary */}
+                        {itineraries.length > 0 && (
+                            <Link 
+                                to="/itinerary" 
+                                className="flex items-center gap-2 px-4 py-2 bg-terracotta-600 hover:bg-terracotta-700 text-white text-sm font-medium rounded-lg transition-colors"
+                            >
+                                <Plus className="w-4 h-4" />
+                                New Itinerary
+                            </Link>
+                        )}
                     </div>
                 </div>
             </section>

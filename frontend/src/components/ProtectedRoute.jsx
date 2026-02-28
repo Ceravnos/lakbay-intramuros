@@ -112,7 +112,7 @@ export const GuestRoute = ({ children }) => {
         if (user?.role === "guide" && isGuideMode) {
             return <Navigate to="/guide/dashboard" replace />;
         }
-        return <Navigate to="/" replace />;
+        return <Navigate to="/dashboard" replace />;
     }
 
     return children;

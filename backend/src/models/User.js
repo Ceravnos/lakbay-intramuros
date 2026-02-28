@@ -23,9 +23,16 @@ const userSchema = new mongoose.Schema(
         phoneNumber: {
             type: String,
             trim: true,
-            required: true,
+            required: function() {
+                // phoneNumber is required for tourists and guides, but not for admins
+                return this.role !== "admin";
+            },
             minlength: 11,
             maxlength: 11,
+        },
+        profilePicture: {
+            type: String,
+            default: null,
         },
         role: {
             type: String,
@@ -35,7 +42,11 @@ const userSchema = new mongoose.Schema(
         // Guide application fields
         guideStatus: {
             type: String,
-            enum: [null, "pending", "approved", "rejected"],
+            enum: [null, "pending", "approved", "rejected", "documents_requested"],
+            default: null,
+        },
+        documentRequestReason: {
+            type: String,
             default: null,
         },
         activityStatus: {

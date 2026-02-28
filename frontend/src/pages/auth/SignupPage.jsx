@@ -102,7 +102,8 @@ const SignupPage = () => {
         try {
             await register(email, password, fullName, phoneNumber);
             toast.success("Account created successfully!");
-            navigate("/");
+            // Redirect to tourist dashboard after signup
+            navigate("/dashboard");
         } catch (error) {
             toast.error(error.response?.data?.message || "Registration failed");
         } finally {

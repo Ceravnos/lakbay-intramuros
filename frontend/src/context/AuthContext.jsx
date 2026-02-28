@@ -85,10 +85,10 @@ export const AuthProvider = ({ children }) => {
         return userData;
     };
 
-    // Apply to become a guide
-    const applyForGuide = async (contactNumber, accreditationFile, accreditationFileName) => {
+    // Apply to become a guide (uses phoneNumber from user profile as contactNumber)
+    const applyForGuide = async (accreditationFile, accreditationFileName) => {
         const res = await api.post("/auth/apply-guide", { 
-            contactNumber, 
+            contactNumber: user?.phoneNumber, 
             accreditationFile, 
             accreditationFileName 
         });

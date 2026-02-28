@@ -24,10 +24,25 @@ const BookingPage = () => {
         numberOfPeople: 1,
         notes: '',
     });
+    const [dateError, setDateError] = useState('');
+
+    // Price per location
+    const PRICE_PER_LOCATION = 100;
 
     useEffect(() => {
         fetchData();
     }, [itineraryId]);
+
+    // Pre-fill from navigation state (from ItineraryBuilderPage)
+    useEffect(() => {
+        if (location.state?.preferredDate) {
+            setBookingDetails(prev => ({
+                ...prev,
+                preferredDate: location.state.preferredDate.split('T')[0],
+                numberOfPeople: location.state.numberOfPeople || prev.numberOfPeople,
+            }));
+        }
+    }, [location.state]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -194,7 +209,10 @@ const BookingPage = () => {
                                         <input
                                             type="date"
                                             value={bookingDetails.preferredDate}
-                                            onChange={(e) => setBookingDetails(prev => ({ ...prev, preferredDate: e.target.value }))}
+                                            onChange={(e) => {
+                                                setBookingDetails(prev => ({ ...prev, preferredDate: e.target.value }));
+                                                setDateError('');
+                                            }}
                                             min={new Date().toISOString().split('T')[0]}
                                             className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta-500"
                                         />
@@ -209,15 +227,34 @@ const BookingPage = () => {
                                         <input
                                             type="time"
                                             value={bookingDetails.preferredTime}
-                                            onChange={(e) =>
+                                            onChange={(e) => {
+                                                const selectedTime = e.target.value;
+                                                const today = new Date().toISOString().split('T')[0];
+                                                
+                                                // Validate time if date is today
+                                                if (bookingDetails.preferredDate === today) {
+                                                    const now = new Date();
+                                                    const [hours, minutes] = selectedTime.split(':').map(Number);
+                                                    const selectedDateTime = new Date();
+                                                    selectedDateTime.setHours(hours, minutes, 0, 0);
+                                                    
+                                                    if (selectedDateTime <= now) {
+                                                        setDateError('Cannot select a past time for today');
+                                                        return;
+                                                    }
+                                                }
+                                                setDateError('');
                                                 setBookingDetails(prev => ({
                                                     ...prev,
-                                                    preferredTime: e.target.value,
-                                                }))
-                                            }
+                                                    preferredTime: selectedTime,
+                                                }));
+                                            }}
                                             className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta-500"
                                         />
                                     </div>
+                                    {dateError && (
+                                        <p className="text-sm text-red-600 mt-1">{dateError}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-stone-700 mb-2">
@@ -331,9 +368,9 @@ const BookingPage = () => {
                                     <span className="text-stone-800">{itinerary?.locations?.length || 0}</span>
                                 </div>
                                 {bookingDetails.preferredDate && (
-                                    <div className="flex justify-between">
-                                        <span className="text-stone-500">Date</span>
-                                        <span className="text-stone-800">
+                                    <div className="flex justify-between gap-2">
+                                        <span className="text-stone-500 flex-shrink-0">Date</span>
+                                        <span className="text-stone-800 text-right truncate">
                                             {formatDate(bookingDetails.preferredDate)}
                                         </span>
                                     </div>
@@ -348,6 +385,25 @@ const BookingPage = () => {
                                         <span className="text-stone-800">{selectedGuide.fullName}</span>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Pricing Section */}
+                            <div className="border-t border-stone-200 mt-4 pt-4 space-y-2">
+                                <h4 className="font-medium text-stone-800 mb-2">Pricing</h4>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-stone-500">
+                                        {itinerary?.locations?.length || 0} locations × ₱{PRICE_PER_LOCATION}
+                                    </span>
+                                    <span className="text-stone-800">
+                                        ₱{(itinerary?.locations?.length || 0) * PRICE_PER_LOCATION}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between font-semibold text-base pt-2 border-t border-stone-100">
+                                    <span className="text-stone-700">Total</span>
+                                    <span className="text-terracotta-600">
+                                        ₱{(itinerary?.locations?.length || 0) * PRICE_PER_LOCATION}
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="border-t border-stone-200 mt-4 pt-4">

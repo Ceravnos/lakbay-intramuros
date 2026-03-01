@@ -129,15 +129,6 @@ const ProfilePage = () => {
   };
 
   const getGuideStatusBadge = () => {
-      if (isApprovedGuide) {
-          return (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sage-100
-               text-sage-700 text-sm font-medium rounded-full">
-                  <CheckCircle className="w-4 h-4" />
-                  Approved Guide
-              </span>
-          );
-      }
       if (hasPendingGuideApplication) {
           return (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sand-100 text-sand-700 text-sm font-medium rounded-full">
@@ -261,7 +252,7 @@ const ProfilePage = () => {
                                   )}
                                   {user?.role}
                               </span>
-                              {getGuideStatusBadge()}
+                              {user?.role !== 'guide' && getGuideStatusBadge()}
                           </div>
                       </div>
                   </div>
@@ -569,12 +560,6 @@ const ProfilePage = () => {
                                           : 'Switch to Guide Mode to manage your tour bookings.'
                                       }
                                   </p>
-                                  {user?.phoneNumber && (
-                                      <p className="text-stone-500 text-sm flex items-center gap-2 mt-2">
-                                          <Phone className="w-4 h-4" />
-                                          {user.phoneNumber}
-                                      </p>
-                                  )}
                               </div>
                           </div>
                           <button

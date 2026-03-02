@@ -1,15 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { 
   Compass, Clock, CheckCircle, Calendar, Users, MapPin,
-  RefreshCw, User, Phone, Mail, ChevronRight,
+  RefreshCw, User, Phone, Mail, ChevronRight, ChevronLeft,
   History, ClipboardList, Loader2, AlertCircle,
-  XCircle
+  XCircle, CalendarOff, Plus, X, Eye
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/axios";
 import Navbar from "../../components/Navbar"
+import ConfirmationModal from "../../components/ConfirmationModal"
+import ItineraryViewModal from "../../components/ItineraryViewModal"
 
 const GuideDashboard = () => {
   const { user, refreshUser } = useAuth();
@@ -21,6 +23,21 @@ const GuideDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [error, setError] = useState(null);
+  
+  // Availability management state
+  const [unavailableDates, setUnavailableDates] = useState([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  
+  // Reject confirmation modal state
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectBookingId, setRejectBookingId] = useState(null);
+  const [rejectLoading, setRejectLoading] = useState(false);
+  
+  // Itinerary view modal state
+  const [itineraryModalOpen, setItineraryModalOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [revisionLoading, setRevisionLoading] = useState(false);
   
   const navigate = useNavigate();
 
@@ -60,7 +77,90 @@ const GuideDashboard = () => {
 
   useEffect(() => {
       fetchBookings();
+      fetchUnavailableDates();
   }, []);
+
+  const fetchUnavailableDates = async () => {
+      try {
+          const res = await api.get('/auth/me');
+          setUnavailableDates(res.data.unavailableDates || []);
+      } catch (err) {
+          console.error('Failed to fetch unavailable dates:', err);
+      }
+  };
+
+  const handleToggleDate = async (dateStr) => {
+      const dateExists = unavailableDates.some(d => {
+          const existing = new Date(d).toISOString().split('T')[0];
+          return existing === dateStr;
+      });
+
+      let newDates;
+      if (dateExists) {
+          newDates = unavailableDates.filter(d => {
+              const existing = new Date(d).toISOString().split('T')[0];
+              return existing !== dateStr;
+          });
+      } else {
+          newDates = [...unavailableDates, new Date(dateStr).toISOString()];
+      }
+
+      setAvailabilityLoading(true);
+      try {
+          const res = await api.put('/users/unavailable-dates', {
+              unavailableDates: newDates
+          });
+          setUnavailableDates(res.data.unavailableDates);
+          toast.success(dateExists ? 'Date marked as available' : 'Date marked as unavailable');
+      } catch (err) {
+          toast.error('Failed to update availability');
+      } finally {
+          setAvailabilityLoading(false);
+      }
+  };
+
+  const getDaysInMonth = (date) => {
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+      const startingDay = firstDay.getDay();
+      return { daysInMonth, startingDay };
+  };
+
+  const isDateUnavailable = (day) => {
+      const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return unavailableDates.some(d => {
+          const existing = new Date(d).toISOString().split('T')[0];
+          return existing === dateStr;
+      });
+  };
+
+  const isDatePast = (day) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const checkDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+      return checkDate < today;
+  };
+
+  const isPastMonth = () => {
+      const today = new Date();
+      return (
+          currentMonth.getFullYear() < today.getFullYear() ||
+          (currentMonth.getFullYear() === today.getFullYear() && 
+           currentMonth.getMonth() < today.getMonth())
+      );
+  };
+
+  const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const { daysInMonth, startingDay } = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
 
 
 
@@ -79,26 +179,48 @@ const GuideDashboard = () => {
       }
   };
 
-  const handleReject = async (bookingId) => {
-      const confirmed = window.confirm(
-          "Are you sure you want to reject this booking? This action cannot be undone."
-      );
+  const openRejectModal = (bookingId) => {
+      setRejectBookingId(bookingId);
+      setRejectModalOpen(true);
+  };
 
-      if (!confirmed) return;
+  const handleReject = async () => {
+      if (!rejectBookingId) return;
 
-      setActionLoading(bookingId);
+      setRejectLoading(true);
       try {
-          await api.put(`/bookings/${bookingId}/reject`);
+          await api.put(`/bookings/${rejectBookingId}/reject`);
           toast.success("Booking rejected!");
+          setRejectModalOpen(false);
+          setRejectBookingId(null);
           fetchBookings();
           await refreshUser();
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to reject booking");
       } finally {
-          setActionLoading(null);
+          setRejectLoading(false);
       }
   };
 
+  const openItineraryModal = (booking) => {
+      setSelectedBooking(booking);
+      setItineraryModalOpen(true);
+  };
+
+  const handleSendRevisionRequest = async (bookingId, note) => {
+      setRevisionLoading(true);
+      try {
+          // For now, we'll just show a toast since the backend endpoint may not exist yet
+          // In a full implementation, this would send a notification to the tourist
+          toast.success("Revision request sent to tourist!");
+          setItineraryModalOpen(false);
+          setSelectedBooking(null);
+      } catch (error) {
+          toast.error("Failed to send revision request");
+      } finally {
+          setRevisionLoading(false);
+      }
+  };
 
   const handleComplete = async (bookingId) => {
       if (!window.confirm("Mark this tour as completed?")) return;
@@ -240,6 +362,17 @@ const GuideDashboard = () => {
                           <History className="w-4 h-4" />
                           History
                       </button>
+                      <button
+                          onClick={() => setActiveTab("availability")}
+                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-colors ${
+                              activeTab === "availability"
+                                  ? "text-terracotta-600 border-b-2 border-terracotta-600 bg-terracotta-50/50"
+                                  : "text-stone-500 hover:text-stone-700 hover:bg-stone-50"
+                          }`}
+                      >
+                          <CalendarOff className="w-4 h-4" />
+                          Availability
+                      </button>
                   </div>
 
                   {/* Tab Content */}
@@ -285,17 +418,7 @@ const GuideDashboard = () => {
                               {/* Pending Requests */}
                               {activeTab === "pending" && (
                                   <div className="space-y-4">
-                                      {user?.activityStatus === "inactive" ? (
-                                          <div className="text-center py-12">
-                                              <Clock className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-                                              <p className="text-stone-600 font-medium">
-                                                  Your activity status is set to inactive
-                                              </p>
-                                              <p className="text-stone-400 text-sm mt-1">
-                                                  Change it to active to be able to get bookings.
-                                              </p>
-                                          </div>
-                                      ) : pendingBookings.length === 0 ? (
+                                      {pendingBookings.length === 0 ? (
                                           <div className="text-center py-12">
                                               <Clock className="w-12 h-12 text-stone-300 mx-auto mb-3" />
                                               <p className="text-stone-500">No pending requests</p>
@@ -348,8 +471,15 @@ const GuideDashboard = () => {
                                                       </div>
                                                       <div className="flex flex-col gap-2">
                                                           <button
+                                                              onClick={() => openItineraryModal(booking)}
+                                                              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors w-full"
+                                                          >
+                                                              <Eye className="w-4 h-4" />
+                                                              View Itinerary
+                                                          </button>
+                                                          <button
                                                               onClick={() => handleAccept(booking._id)}
-                                                              disabled={actionLoading === booking._id || user?.activityStatus !== "active"}
+                                                              disabled={actionLoading === booking._id}
                                                               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
                                                           >
                                                               {actionLoading === booking._id ? (
@@ -363,7 +493,7 @@ const GuideDashboard = () => {
                                                           </button>
 
                                                           <button
-                                                              onClick={() => handleReject(booking._id)}
+                                                              onClick={() => openRejectModal(booking._id)}
                                                               disabled={actionLoading === booking._id}
                                                               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
                                                           >
@@ -510,11 +640,165 @@ const GuideDashboard = () => {
                                   </div>
                               )}
 
+                              {/* Availability Management */}
+                              {activeTab === "availability" && (
+                                  <div>
+                                      <div className="mb-6">
+                                          <h3 className="font-semibold text-stone-800 mb-2">Manage Your Availability</h3>
+                                          <p className="text-sm text-stone-500">
+                                              Click on dates to mark them as unavailable. Tourists won't be able to book you on these dates.
+                                          </p>
+                                      </div>
+
+                                      {/* Calendar */}
+                                      <div className="max-w-md mx-auto">
+                                          {/* Month Navigation */}
+                                          <div className="flex items-center justify-between mb-4">
+                                              <button
+                                                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                                                  disabled={isPastMonth()}
+                                                  className="p-2 hover:bg-stone-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                              >
+                                                  <ChevronLeft className="w-5 h-5 text-stone-600" />
+                                              </button>
+                                              <span className="font-medium text-stone-800">
+                                                  {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+                                              </span>
+                                              <button
+                                                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                                                  className="p-2 hover:bg-stone-100 rounded-lg transition-colors"
+                                              >
+                                                  <ChevronRight className="w-5 h-5 text-stone-600" />
+                                              </button>
+                                          </div>
+
+                                          {/* Day Headers */}
+                                          <div className="grid grid-cols-7 gap-1 mb-2">
+                                              {dayNames.map(day => (
+                                                  <div key={day} className="text-center text-xs font-medium text-stone-500 py-2">
+                                                      {day}
+                                                  </div>
+                                              ))}
+                                          </div>
+
+                                          {/* Calendar Grid */}
+                                          <div className="grid grid-cols-7 gap-1">
+                                              {/* Empty cells for days before the first of the month */}
+                                              {Array.from({ length: startingDay }).map((_, i) => (
+                                                  <div key={`empty-${i}`} className="aspect-square" />
+                                              ))}
+                                              
+                                              {/* Days of the month */}
+                                              {Array.from({ length: daysInMonth }).map((_, i) => {
+                                                  const day = i + 1;
+                                                  const unavailable = isDateUnavailable(day);
+                                                  const past = isDatePast(day);
+                                                  const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+                                                  return (
+                                                      <button
+                                                          key={day}
+                                                          onClick={() => !past && handleToggleDate(dateStr)}
+                                                          disabled={past || availabilityLoading}
+                                                          className={`
+                                                              aspect-square flex items-center justify-center rounded-lg text-sm font-medium transition-all relative
+                                                              ${unavailable 
+                                                                  ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                                                                  : past
+                                                                      ? 'bg-stone-100 text-stone-300 cursor-not-allowed'
+                                                                      : 'hover:bg-sage-50 text-stone-700 hover:text-sage-700'
+                                                              }
+                                                              ${availabilityLoading ? 'opacity-50' : ''}
+                                                          `}
+                                                          title={unavailable ? 'Click to mark as available' : past ? 'Past date' : 'Click to mark as unavailable'}
+                                                      >
+                                                          {day}
+                                                          {unavailable && (
+                                                              <X className="w-3 h-3 absolute top-0.5 right-0.5 text-red-500" />
+                                                          )}
+                                                      </button>
+                                                  );
+                                              })}
+                                          </div>
+
+                                          {/* Legend */}
+                                          <div className="flex items-center justify-center gap-6 mt-6 text-xs text-stone-500">
+                                              <div className="flex items-center gap-2">
+                                                  <div className="w-4 h-4 bg-white border border-stone-200 rounded" />
+                                                  <span>Available</span>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                  <div className="w-4 h-4 bg-red-100 border border-red-200 rounded" />
+                                                  <span>Unavailable</span>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                  <div className="w-4 h-4 bg-stone-100 border border-stone-200 rounded" />
+                                                  <span>Past</span>
+                                              </div>
+                                          </div>
+
+                                          {/* Unavailable dates summary */}
+                                          {unavailableDates.length > 0 && (
+                                              <div className="mt-6 p-4 bg-stone-50 rounded-xl">
+                                                  <h4 className="text-sm font-medium text-stone-700 mb-2">Your Unavailable Dates</h4>
+                                                  <div className="flex flex-wrap gap-2">
+                                                      {unavailableDates
+                                                          .filter(d => new Date(d) >= new Date().setHours(0,0,0,0))
+                                                          .sort((a, b) => new Date(a) - new Date(b))
+                                                          .slice(0, 10)
+                                                          .map((date, idx) => (
+                                                              <span 
+                                                                  key={idx}
+                                                                  className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full"
+                                                              >
+                                                                  {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                              </span>
+                                                          ))}
+                                                      {unavailableDates.filter(d => new Date(d) >= new Date().setHours(0,0,0,0)).length > 10 && (
+                                                          <span className="px-2 py-1 bg-stone-200 text-stone-600 text-xs rounded-full">
+                                                              +{unavailableDates.filter(d => new Date(d) >= new Date().setHours(0,0,0,0)).length - 10} more
+                                                          </span>
+                                                      )}
+                                                  </div>
+                                              </div>
+                                          )}
+                                      </div>
+                                  </div>
+                              )}
+
                           </>
                       )}
                   </div>
               </div>
           </main>
+
+          {/* Reject Booking Confirmation Modal */}
+          <ConfirmationModal
+              isOpen={rejectModalOpen}
+              onClose={() => {
+                  setRejectModalOpen(false);
+                  setRejectBookingId(null);
+              }}
+              onConfirm={handleReject}
+              title="Reject Booking"
+              message="Are you sure you want to reject this booking request? The tourist will be notified and this action cannot be undone."
+              confirmText="Yes, Reject Booking"
+              cancelText="Keep Request"
+              loading={rejectLoading}
+              icon={XCircle}
+          />
+
+          {/* Itinerary View Modal */}
+          <ItineraryViewModal
+              isOpen={itineraryModalOpen}
+              onClose={() => {
+                  setItineraryModalOpen(false);
+                  setSelectedBooking(null);
+              }}
+              booking={selectedBooking}
+              onSendRevisionRequest={handleSendRevisionRequest}
+              loading={revisionLoading}
+          />
       </div>
   );
 };

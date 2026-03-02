@@ -41,11 +41,6 @@ export const createBooking = async (req, res) => {
                 return res.status(400).json({ message: "Selected user is not an approved guide" });
             }
 
-            if (guide.activityStatus !== "active") {
-                return res.status(409).json({
-                    message: "Guide is no longer active. Please select another guide.",
-                });
-            }
         }
 
         // Check if tourist already has a pending booking for this itinerary

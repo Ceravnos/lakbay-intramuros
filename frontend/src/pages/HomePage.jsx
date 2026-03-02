@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router'
-import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2 } from 'lucide-react'
+import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
 import { useAuth } from '../context/AuthContext'
 
 import Navbar from '../components/Navbar'
 import RateLimitedUI from '../components/RateLimitedUI'
+import ConfirmationModal from '../components/ConfirmationModal'
 
 // ⭐ Rating Modal Component
 const RatingModal = ({ booking, onClose, onSubmit }) => {
@@ -75,6 +76,9 @@ const HomePage = () => {
     const [loading, setLoading] = useState(true);
     const [showRatingPrompt, setShowRatingPrompt] = useState(false);
     const [ratingBooking, setRatingBooking] = useState(null);
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [cancelBookingId, setCancelBookingId] = useState(null);
+    const [cancelLoading, setCancelLoading] = useState(false);
 
 
     const fetchData = useCallback(async () => {
@@ -132,16 +136,26 @@ const HomePage = () => {
         }
     };
 
-    const handleCancelBooking = async (id) => {
-        if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+    const openCancelModal = (id) => {
+        setCancelBookingId(id);
+        setCancelModalOpen(true);
+    };
+
+    const handleCancelBooking = async () => {
+        if (!cancelBookingId) return;
         
+        setCancelLoading(true);
         try {
-            await api.put(`/bookings/${id}/cancel`);
+            await api.put(`/bookings/${cancelBookingId}/cancel`);
             toast.success("Booking cancelled");
-            setMyBookings(prev => prev.filter(item => item._id !== id));
+            setMyBookings(prev => prev.filter(item => item._id !== cancelBookingId));
+            setCancelModalOpen(false);
+            setCancelBookingId(null);
             fetchData();
         } catch (error) {
             toast.error("Failed to cancel booking");
+        } finally {
+            setCancelLoading(false);
         }
     };
 
@@ -253,7 +267,7 @@ const HomePage = () => {
                                     {/* Cancel button */}
                                     {booking.status === "pending" && (
                                         <button
-                                            onClick={() => handleCancelBooking(booking._id)}
+                                            onClick={() => openCancelModal(booking._id)}
                                             className="absolute bottom-4 right-4 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"
                                         >
                                             Cancel
@@ -364,6 +378,22 @@ const HomePage = () => {
                 onSubmit={submitRating}
             />
         )}
+
+        {/* Cancel Booking Confirmation Modal */}
+        <ConfirmationModal
+            isOpen={cancelModalOpen}
+            onClose={() => {
+                setCancelModalOpen(false);
+                setCancelBookingId(null);
+            }}
+            onConfirm={handleCancelBooking}
+            title="Cancel Booking"
+            message="Are you sure you want to cancel this booking request? This action cannot be undone."
+            confirmText="Yes, Cancel Booking"
+            cancelText="Keep Booking"
+            loading={cancelLoading}
+            icon={XCircle}
+        />
 
         </div>
     );

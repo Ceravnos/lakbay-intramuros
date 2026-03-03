@@ -20,14 +20,9 @@
   },
   "homepage": "https://github.com/Ceravnos/lakbay-intramuros#readme",
   "dependencies": {
-<<<<<<< HEAD
-    "@react-google-maps/api": "^2.20.8",
-    "mongodb": "^7.1.0"
-=======
     "@react-google-maps/api": "^2.20.8"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
->>>>>>> 7af5f826007717675bb1fb2b39c95736517c54b6
   }
 }

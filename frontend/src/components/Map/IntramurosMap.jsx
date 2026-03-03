@@ -5,12 +5,12 @@ import { INTRAMUROS_LOCATIONS, getCategoryConfig } from '../../data/locations';
 
 // Intramuros bounds and center
 const INTRAMUROS_CENTER = {
-    lat: 14.5876,
-    lng: 120.9726,
+    lat: 14.59097751580539, 
+    lng: 120.97563107436508,
 };
 
 const INTRAMUROS_BOUNDS = {
-    north: 14.598,
+    north: 14.606,
     south: 14.578,
     west: 120.963,
     east: 120.982,

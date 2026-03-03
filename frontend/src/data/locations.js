@@ -162,6 +162,31 @@ export const INTRAMUROS_LOCATIONS = [
         estimatedTime: 30,
         image: `${path}destileria.jpg`,
     },
+    {
+        id: 'rizal-shrine',
+        placeId: 'rizal-shrine',
+        name: 'Jose Rizal Shrine',
+        category: 'museums',
+        lat: 14.59459939579629,
+        lng:  120.96988432104042,
+        address: 'Fort Santiago, Intramuros, Manila',
+        description: 'A monument of the Philippine national hero.',
+        estimatedTime: 15,
+        image: `${path}rizal-shrine.jpg`,
+    },
+    {
+        id: 'dungeon',
+        placeId: 'dungeon',
+        name: 'The Fort Santiago Dungeons',
+        category: 'museums',
+        lat: 14.595061423134272, 
+        lng: 120.96963755782086,
+        address: 'Fort Santiago, Intramuros, Manila',
+        description: 'Built in the Spanish era, used as a prison during the Japanese era, it now serves as a memorial of those who died.',
+        estimatedTime: 30,
+        image: `${path}dungeon.jpg`,
+    },
+    
 
     // Forts & Walls
     {

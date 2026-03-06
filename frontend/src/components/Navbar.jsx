@@ -1,14 +1,57 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link, useNavigate, useLocation } from "react-router"
-import { PlusIcon, LogOut, Compass, Shield, MapPin, ChevronDown, ToggleLeft, ToggleRight, Loader2, User } from "lucide-react"
+import { PlusIcon, LogOut, Compass, Shield, MapPin, ChevronDown, ToggleLeft, ToggleRight, Loader2, User, Bell } from "lucide-react"
 import toast from "react-hot-toast"
 import { useAuth } from "../context/AuthContext"
+import api from "../lib/axios"
 
 const Navbar = () => {
   const { user, isAuthenticated, logout, isApprovedGuide, isGuideMode, toggleGuideMode } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [togglingMode, setTogglingMode] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Fetch notifications
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchNotifications();
+    }
+  }, [isAuthenticated, isGuideMode]);
+
+  // Listen for real-time booking updates
+  useEffect(() => {
+    const handleBookingUpdate = (event) => {
+      const { type } = event.detail;
+      // Refresh notifications on relevant updates
+      if (type === 'revision' || type === 'new' || type === 'accepted' || type === 'rejected') {
+        fetchNotifications();
+      }
+    };
+
+    window.addEventListener('booking-update', handleBookingUpdate);
+    return () => {
+      window.removeEventListener('booking-update', handleBookingUpdate);
+    };
+  }, [isGuideMode]);
+
+  const fetchNotifications = async () => {
+    try {
+      if (isGuideMode) {
+        // For guides: fetch pending booking requests
+        const res = await api.get('/bookings/pending');
+        setNotifications(res.data);
+      } else {
+        // For tourists: fetch bookings with revision requests
+        const res = await api.get('/bookings/my-bookings');
+        const revisionBookings = res.data.filter(b => b.revisionRequested && b.status === 'pending');
+        setNotifications(revisionBookings);
+      }
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -77,6 +120,79 @@ const Navbar = () => {
                     Dashboard
                   </Link>
                 )}
+
+                {/* Notification Bell */}
+                <div className="relative">
+                    <button
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className="relative p-2 rounded-lg hover:bg-stone-100 transition-colors"
+                    >
+                      <Bell className="w-5 h-5 text-stone-600" />
+                      {notifications.length > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-terracotta-500 text-white text-xs rounded-full flex items-center justify-center">
+                          {notifications.length}
+                        </span>
+                      )}
+                    </button>
+                    
+                    {/* Notification Dropdown */}
+                    {showNotifications && (
+                      <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-stone-200 py-2 z-50">
+                        <div className="px-4 py-2 border-b border-stone-100">
+                          <p className="text-sm font-medium text-stone-800">Notifications</p>
+                        </div>
+                        {notifications.length === 0 ? (
+                          <div className="px-4 py-6 text-center text-stone-500 text-sm">
+                            No new notifications
+                          </div>
+                        ) : (
+                          <div className="max-h-64 overflow-y-auto">
+                            {notifications.map((booking) => (
+                              isGuideMode ? (
+                                <Link
+                                  key={booking._id}
+                                  to="/guide/dashboard"
+                                  onClick={() => setShowNotifications(false)}
+                                  className="block px-4 py-3 hover:bg-stone-50 border-b border-stone-100 last:border-0"
+                                >
+                                  <p className="text-sm font-medium text-stone-800">
+                                    New Booking: {booking.tripDetails?.title || 'Itinerary'}
+                                  </p>
+                                  <p className="text-xs text-stone-500 mt-1">
+                                    {booking.touristId?.fullName || 'Tourist'} requested a tour
+                                  </p>
+                                </Link>
+                              ) : (
+                                <button
+                                  key={booking._id}
+                                  onClick={() => {
+                                    setShowNotifications(false);
+                                    // Dispatch event to open revision modal
+                                    window.dispatchEvent(new CustomEvent('open-revision-modal', { 
+                                      detail: { booking } 
+                                    }));
+                                  }}
+                                  className="w-full text-left block px-4 py-3 hover:bg-stone-50 border-b border-stone-100 last:border-0"
+                                >
+                                  <p className="text-sm font-medium text-stone-800">
+                                    Revision Requested: {booking.tripDetails?.title || 'Itinerary'}
+                                  </p>
+                                  <p className="text-xs text-stone-500 mt-1">
+                                    {booking.guideId?.fullName || 'Guide'} suggested changes
+                                  </p>
+                                  {booking.revisionNote && (
+                                    <p className="text-xs text-terracotta-600 mt-1 italic">
+                                      "{booking.revisionNote}"
+                                    </p>
+                                  )}
+                                </button>
+                              )
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                </div>
 
                 {/* User dropdown */}
                 <div className="relative group">

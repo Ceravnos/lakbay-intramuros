@@ -53,11 +53,16 @@ const ItineraryBuilderPage = () => {
     // Drag and drop state
     const [draggedItem, setDraggedItem] = useState(null);
     const [dragOverItem, setDragOverItem] = useState(null);
+    
+    // Read-only mode for ongoing tours
+    const [isReadOnly, setIsReadOnly] = useState(false);
+    const [activeBooking, setActiveBooking] = useState(null);
 
     // Load existing itinerary or session data
     useEffect(() => {
         if (id) {
             fetchItinerary(id);
+            checkIfOngoingTour(id);
         } else if (location.state?.sessionItinerary) {
             // Convert session itinerary to proper format
             const sessionLocations = location.state.sessionItinerary.map((item, index) => ({
@@ -83,6 +88,28 @@ const ItineraryBuilderPage = () => {
             navigate('/dashboard');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const checkIfOngoingTour = async (itineraryId) => {
+        try {
+            const res = await api.get('/bookings/my-bookings');
+            const activeBookingFound = res.data.find(
+                b => {
+                    const bookingItineraryId = b.itineraryId?._id || b.itineraryId;
+                    return bookingItineraryId === itineraryId && (b.status === 'accepted' || b.status === 'pending');
+                }
+            );
+            if (activeBookingFound) {
+                setIsReadOnly(true);
+                setActiveBooking(activeBookingFound);
+            } else {
+                // Reset read-only state if no active booking
+                setIsReadOnly(false);
+                setActiveBooking(null);
+            }
+        } catch (error) {
+            console.error('Failed to check ongoing tour:', error);
         }
     };
 
@@ -331,6 +358,32 @@ const ItineraryBuilderPage = () => {
         <div className="min-h-screen bg-white flex flex-col">
             <Navbar />
             
+            {/* Read-only Banner for Booked/Ongoing Tours */}
+            {isReadOnly && activeBooking && (
+                <div className="bg-sage-100 border-b border-sage-200 px-4 py-3">
+                    <div className="max-w-6xl mx-auto flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-sage-200 rounded-full flex items-center justify-center">
+                                <Lock className="w-4 h-4 text-sage-700" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-sage-800">
+                                    {activeBooking.status === 'accepted' ? 'Tour in Progress' : 'Booking Pending'}
+                                </p>
+                                <p className="text-xs text-sage-600">
+                                    {activeBooking.status === 'accepted'
+                                        ? `This itinerary is currently being used for an active tour with ${activeBooking.guideId?.fullName || 'your guide'}`
+                                        : `This itinerary has a pending booking request with ${activeBooking.guideId?.fullName || 'a guide'}`
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                        <span className="px-3 py-1 bg-sage-200 text-sage-700 text-xs font-medium rounded-full">
+                            View Only
+                        </span>
+                    </div>
+                </div>
+            )}
 
             {/* Main Content - Two Column Layout (stacked on mobile) */}
             <div className="flex-1 flex flex-col lg:flex-row">
@@ -366,7 +419,8 @@ const ItineraryBuilderPage = () => {
                         </div>
                     )}
 
-                    {/* Search & Add Locations */}
+                    {/* Search & Add Locations - Hidden in read-only mode */}
+                    {!isReadOnly && (
                     <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96 z-10">
                         <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-stone-200 overflow-hidden">
                             {/* Smart Generate Button */}
@@ -442,6 +496,7 @@ const ItineraryBuilderPage = () => {
                             </div>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Right - Itinerary Panel (full width on mobile, fixed width on desktop) */}
@@ -457,6 +512,7 @@ const ItineraryBuilderPage = () => {
                                 <ChevronLeft className="w-4 h-4" />
                                 Back
                             </button>
+                            {!isReadOnly && (
                             <button
                                 onClick={handleSave}
                                 disabled={saving}
@@ -469,14 +525,16 @@ const ItineraryBuilderPage = () => {
                                 )}
                                 Save
                             </button>
+                            )}
                         </div>
                         
                         {/* Itinerary Name Input */}
                         <input
                             type="text"
                             value={itinerary.name}
-                            onChange={(e) => setItinerary(prev => ({ ...prev, name: e.target.value }))}
-                            className="w-full text-lg font-serif font-semibold text-stone-800 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-terracotta-500 focus:outline-none transition-colors mb-2 pb-1"
+                            onChange={(e) => !isReadOnly && setItinerary(prev => ({ ...prev, name: e.target.value }))}
+                            readOnly={isReadOnly}
+                            className={`w-full text-lg font-serif font-semibold text-stone-800 bg-transparent border-b border-transparent ${isReadOnly ? '' : 'hover:border-stone-200 focus:border-terracotta-500'} focus:outline-none transition-colors mb-2 pb-1`}
                             placeholder="Name your itinerary..."
                         />
                         
@@ -539,8 +597,10 @@ const ItineraryBuilderPage = () => {
                                     <input
                                         type="date"
                                         value={itinerary.preferredDate ? itinerary.preferredDate.split('T')[0] : ''}
-                                        onChange={(e) => setItinerary(prev => ({ ...prev, preferredDate: e.target.value }))}
-                                        className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500"
+                                        min={new Date().toISOString().split('T')[0]}
+                                        onChange={(e) => !isReadOnly && setItinerary(prev => ({ ...prev, preferredDate: e.target.value }))}
+                                        disabled={isReadOnly}
+                                        className={`w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                             </div>
@@ -553,9 +613,11 @@ const ItineraryBuilderPage = () => {
                                     <input
                                         type="number"
                                         min="1"
+                                        max="15"
                                         value={itinerary.numberOfPeople}
-                                        onChange={(e) => setItinerary(prev => ({ ...prev, numberOfPeople: parseInt(e.target.value) || 1 }))}
-                                        className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500"
+                                        onChange={(e) => !isReadOnly && setItinerary(prev => ({ ...prev, numberOfPeople: Math.min(15, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                                        disabled={isReadOnly}
+                                        className={`w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                             </div>
@@ -584,10 +646,10 @@ const ItineraryBuilderPage = () => {
                                         .map((location, index) => (
                                             <div
                                                 key={location.placeId}
-                                                draggable
-                                                onDragStart={(e) => handleDragStart(e, index)}
-                                                onDragOver={(e) => handleDragOver(e, index)}
-                                                onDragEnd={handleDragEnd}
+                                                draggable={!isReadOnly}
+                                                onDragStart={(e) => !isReadOnly && handleDragStart(e, index)}
+                                                onDragOver={(e) => !isReadOnly && handleDragOver(e, index)}
+                                                onDragEnd={!isReadOnly ? handleDragEnd : undefined}
                                                 className={`bg-stone-50 rounded-xl border overflow-hidden transition-all ${
                                                     draggedItem === index 
                                                         ? 'opacity-50 border-terracotta-400 scale-[0.98]' 
@@ -598,7 +660,9 @@ const ItineraryBuilderPage = () => {
                                             >
                                                 <div className="flex items-start gap-3 p-3">
                                                     <div className="flex items-center gap-2">
+                                                        {!isReadOnly && (
                                                         <GripVertical className="w-4 h-4 text-stone-400 cursor-grab active:cursor-grabbing hover:text-stone-600" />
+                                                        )}
                                                         <div className="w-7 h-7 bg-terracotta-100 text-terracotta-600 rounded-full flex items-center justify-center text-sm font-semibold">
                                                             {index + 1}
                                                         </div>
@@ -611,20 +675,23 @@ const ItineraryBuilderPage = () => {
                                                             {location.address}
                                                         </p>
                                                     </div>
+                                                    {!isReadOnly && (
                                                     <button
                                                         onClick={() => removeLocation(location.placeId)}
                                                         className="p-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
+                                                    )}
                                                 </div>
                                                 <div className="px-3 pb-3">
                                                     <input
                                                         type="text"
                                                         value={location.notes}
-                                                        onChange={(e) => updateLocationNotes(location.placeId, e.target.value)}
-                                                        placeholder="Add notes..."
-                                                        className="w-full px-2 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-terracotta-500"
+                                                        onChange={(e) => !isReadOnly && updateLocationNotes(location.placeId, e.target.value)}
+                                                        readOnly={isReadOnly}
+                                                        placeholder={isReadOnly ? '' : 'Add notes...'}
+                                                        className={`w-full px-2 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-terracotta-500 ${isReadOnly ? 'cursor-default' : ''}`}
                                                     />
                                                 </div>
                                             </div>
@@ -634,8 +701,8 @@ const ItineraryBuilderPage = () => {
                         </div>
                     </div>
 
-                    {/* Book Guide Button */}
-                    {itinerary.locations.length > 0 && id && (
+                    {/* Book Guide Button - Hidden in read-only mode */}
+                    {itinerary.locations.length > 0 && id && !isReadOnly && (
                         <div className="p-4 border-t border-stone-200">
                             <button
                                 onClick={() => {

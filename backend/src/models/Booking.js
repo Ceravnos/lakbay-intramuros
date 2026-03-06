@@ -43,6 +43,39 @@ const bookingSchema = new mongoose.Schema(
                 type: String,
                 default: "",
             },
+            priorityAssistance: {
+                type: [String],
+                default: [],
+            },
+            meetingPoint: {
+                type: String,
+                default: "",
+            },
+        },
+        revisionRequested: {
+            type: Boolean,
+            default: false,
+        },
+        revisionNote: {
+            type: String,
+            default: "",
+        },
+        proposedItinerary: {
+            locations: [{
+                placeId: String,
+                name: String,
+                address: String,
+                lat: Number,
+                lng: Number,
+                order: Number,
+                notes: String,
+            }],
+            preferredDate: Date,
+            numberOfPeople: Number,
+        },
+        rejectedAt: {
+            type: Date,
+            default: null,
         },
         acceptedAt: {
             type: Date,

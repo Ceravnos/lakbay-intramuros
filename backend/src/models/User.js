@@ -111,6 +111,11 @@ const userSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        // Guide unavailable dates (for guides to mark dates they cannot work)
+        unavailableDates: {
+            type: [Date],
+            default: [],
+        },
         // Account status for admin management
         accountStatus: {
             type: String,

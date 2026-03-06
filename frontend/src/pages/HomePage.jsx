@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router'
-import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2 } from 'lucide-react'
+import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
 import { useAuth } from '../context/AuthContext'
 
 import Navbar from '../components/Navbar'
 import RateLimitedUI from '../components/RateLimitedUI'
+import ConfirmationModal from '../components/ConfirmationModal'
+import RevisionReviewModal from '../components/RevisionReviewModal'
 
 // ⭐ Rating Modal Component
-const RatingModal = ({ booking, onClose, onSubmit }) => {
+const RatingModal = ({ booking, onClose, onSubmit, submitting }) => {
     const [rating, setRating] = useState(0);
     const [hover, setHover] = useState(0);
 
@@ -18,12 +20,32 @@ const RatingModal = ({ booking, onClose, onSubmit }) => {
     return (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 w-full max-w-sm text-center">
-                <h3 className="text-lg font-serif font-semibold text-stone-800 mb-2">
-                    Rate your guide
+                <h3 className="text-lg font-serif font-semibold text-stone-800 mb-4">
+                    Rate Your Guide
                 </h3>
 
+                {/* Guide Profile */}
+                <div className="flex flex-col items-center mb-4">
+                    <div className="w-16 h-16 bg-sage-100 rounded-full flex items-center justify-center overflow-hidden mb-2">
+                        {booking.guideId?.profilePicture ? (
+                            <img 
+                                src={booking.guideId.profilePicture} 
+                                alt={booking.guideId.fullName}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <span className="text-sage-700 font-semibold text-xl">
+                                {booking.guideId?.fullName?.charAt(0).toUpperCase() || 'G'}
+                            </span>
+                        )}
+                    </div>
+                    <p className="font-medium text-stone-800">
+                        {booking.guideId?.fullName || 'Your Guide'}
+                    </p>
+                </div>
+
                 <p className="text-sm text-stone-500 mb-4">
-                    How was your experience with {booking.guideId?.fullName}?
+                    How was your experience?
                 </p>
 
                 <div className="flex justify-center gap-2 mb-6">
@@ -49,16 +71,17 @@ const RatingModal = ({ booking, onClose, onSubmit }) => {
                 <div className="flex gap-3">
                     <button
                         onClick={onClose}
-                        className="flex-1 px-4 py-2 text-sm border rounded-lg text-stone-600 hover:bg-stone-50"
+                        disabled={submitting}
+                        className="flex-1 px-4 py-2 text-sm border rounded-lg text-stone-600 hover:bg-stone-50 disabled:opacity-50"
                     >
                         Skip
                     </button>
                     <button
-                        disabled={rating === 0}
+                        disabled={rating === 0 || submitting}
                         onClick={() => onSubmit(rating)}
                         className="flex-1 px-4 py-2 text-sm bg-terracotta-600 text-white rounded-lg hover:bg-terracotta-700 disabled:opacity-50"
                     >
-                        Submit
+                        {submitting ? 'Submitting...' : 'Submit'}
                     </button>
                 </div>
             </div>
@@ -75,6 +98,16 @@ const HomePage = () => {
     const [loading, setLoading] = useState(true);
     const [showRatingPrompt, setShowRatingPrompt] = useState(false);
     const [ratingBooking, setRatingBooking] = useState(null);
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [cancelBookingId, setCancelBookingId] = useState(null);
+    const [cancelLoading, setCancelLoading] = useState(false);
+    const [ratingSubmitting, setRatingSubmitting] = useState(false);
+    
+    // Revision review modal state
+    const [revisionModalOpen, setRevisionModalOpen] = useState(false);
+    const [revisionBooking, setRevisionBooking] = useState(null);
+    const [acceptRevisionLoading, setAcceptRevisionLoading] = useState(false);
+    const [cancelRevisionLoading, setCancelRevisionLoading] = useState(false);
 
 
     const fetchData = useCallback(async () => {
@@ -98,18 +131,23 @@ const HomePage = () => {
     }, []);
 
     const submitRating = async (rating) => {
+        setRatingSubmitting(true);
         try {
             await api.post(`/ratings`, {
                 bookingId: ratingBooking._id,
-                guideId: ratingBooking.guideId._id,
+                guideId: ratingBooking.guideId?._id || ratingBooking.guideId,
                 rating
             });
 
             toast.success("Thanks for your feedback!");
             setShowRatingPrompt(false);
             setRatingBooking(null);
+            fetchData();
         } catch (error) {
-            toast.error("Failed to submit rating");
+            console.error("Rating submission error:", error);
+            toast.error(error.response?.data?.message || "Failed to submit rating");
+        } finally {
+            setRatingSubmitting(false);
         }
     };
 
@@ -117,6 +155,85 @@ const HomePage = () => {
     useEffect(() => {
         fetchData();
     }, [isAuthenticated, user, fetchData]);
+
+    // Listen for real-time booking updates via WebSocket
+    useEffect(() => {
+        const handleBookingUpdate = (event) => {
+            const { type, booking } = event.detail;
+            // Refresh bookings on any update
+            fetchData();
+            
+            // Show rating prompt when tour is completed
+            if (type === 'completed' && booking && !booking.isRated) {
+                setRatingBooking(booking);
+                setShowRatingPrompt(true);
+            }
+            
+            // Show revision review modal when guide requests revision
+            if (type === 'revision' && booking) {
+                setRevisionBooking(booking);
+                setRevisionModalOpen(true);
+            }
+        };
+
+        window.addEventListener('booking-update', handleBookingUpdate);
+        return () => {
+            window.removeEventListener('booking-update', handleBookingUpdate);
+        };
+    }, [fetchData]);
+
+    // Open revision modal for a specific booking (called from notification click)
+    const openRevisionModal = (booking) => {
+        setRevisionBooking(booking);
+        setRevisionModalOpen(true);
+    };
+
+    // Listen for open-revision-modal event from Navbar
+    useEffect(() => {
+        const handleOpenRevisionModal = (event) => {
+            const { booking } = event.detail;
+            if (booking) {
+                openRevisionModal(booking);
+            }
+        };
+
+        window.addEventListener('open-revision-modal', handleOpenRevisionModal);
+        return () => {
+            window.removeEventListener('open-revision-modal', handleOpenRevisionModal);
+        };
+    }, []);
+
+    // Handle accepting guide's revision
+    const handleAcceptRevision = async (bookingId) => {
+        setAcceptRevisionLoading(true);
+        try {
+            await api.put(`/bookings/${bookingId}/accept-revision`);
+            toast.success("Revision accepted! Your itinerary has been updated.");
+            setRevisionModalOpen(false);
+            setRevisionBooking(null);
+            fetchData();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to accept revision");
+        } finally {
+            setAcceptRevisionLoading(false);
+        }
+    };
+
+    // Handle cancelling booking due to revision
+    const handleCancelRevisionBooking = async (bookingId) => {
+        setCancelRevisionLoading(true);
+        try {
+            await api.put(`/bookings/${bookingId}/cancel`);
+            toast.success("Booking cancelled");
+            setRevisionModalOpen(false);
+            setRevisionBooking(null);
+            fetchData();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to cancel booking");
+        } finally {
+            setCancelRevisionLoading(false);
+        }
+    };
 
 
 
@@ -132,16 +249,26 @@ const HomePage = () => {
         }
     };
 
-    const handleCancelBooking = async (id) => {
-        if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+    const openCancelModal = (id) => {
+        setCancelBookingId(id);
+        setCancelModalOpen(true);
+    };
+
+    const handleCancelBooking = async () => {
+        if (!cancelBookingId) return;
         
+        setCancelLoading(true);
         try {
-            await api.put(`/bookings/${id}/cancel`);
+            await api.put(`/bookings/${cancelBookingId}/cancel`);
             toast.success("Booking cancelled");
-            setMyBookings(prev => prev.filter(item => item._id !== id));
+            setMyBookings(prev => prev.filter(item => item._id !== cancelBookingId));
+            setCancelModalOpen(false);
+            setCancelBookingId(null);
             fetchData();
         } catch (error) {
             toast.error("Failed to cancel booking");
+        } finally {
+            setCancelLoading(false);
         }
     };
 
@@ -160,6 +287,14 @@ const HomePage = () => {
             hour12: true
         })
     };
+
+    // Filter out itineraries that have active bookings (pending/accepted)
+    const bookedItineraryIds = myBookings
+        .filter(b => b.status === 'pending' || b.status === 'accepted')
+        .map(b => b.itineraryId?._id || b.itineraryId);
+    const unbookedItineraries = itineraries.filter(
+        it => !bookedItineraryIds.includes(it._id)
+    );
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -191,7 +326,7 @@ const HomePage = () => {
                             </p>
                         </div>
 {/* Only show New Itinerary button if user has at least one itinerary */}
-                        {itineraries.length > 0 && (
+                        {unbookedItineraries.length > 0 && (
                             <Link 
                                 to="/itinerary" 
                                 className="flex items-center gap-2 px-4 py-2 bg-terracotta-600 hover:bg-terracotta-700 text-white text-sm font-medium rounded-lg transition-colors"
@@ -224,8 +359,7 @@ const HomePage = () => {
                                         <span
                                             className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(booking.status)}`}
                                         >
-                                            {booking.status}
-                                            {booking.status?.toLowerCase() === "accepted" && " - ongoing"}
+                                            {booking.status?.toLowerCase() === "accepted" ? "Active" : booking.status}
                                         </span>
                                     </div>
 
@@ -244,16 +378,29 @@ const HomePage = () => {
                                             {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}
                                         </div>
                                         {booking.guideId && (
-                                            <p className="text-sage-600">
-                                                Guide: {booking.guideId.fullName}
-                                            </p>
+                                            <div className="flex items-center gap-2 text-sage-600">
+                                                <div className="w-5 h-5 bg-sage-100 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                    {booking.guideId.profilePicture ? (
+                                                        <img 
+                                                            src={booking.guideId.profilePicture} 
+                                                            alt={booking.guideId.fullName}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <span className="text-sage-700 text-xs font-medium">
+                                                            {booking.guideId.fullName?.charAt(0).toUpperCase()}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="text-sm">{booking.guideId.fullName}</span>
+                                            </div>
                                         )}
                                     </div>
 
                                     {/* Cancel button */}
                                     {booking.status === "pending" && (
                                         <button
-                                            onClick={() => handleCancelBooking(booking._id)}
+                                            onClick={() => openCancelModal(booking._id)}
                                             className="absolute bottom-4 right-4 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"
                                         >
                                             Cancel
@@ -275,7 +422,7 @@ const HomePage = () => {
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="w-6 h-6 text-stone-400 animate-spin" />
                         </div>
-                    ) : itineraries.length === 0 ? (
+                    ) : unbookedItineraries.length === 0 ? (
                         <div className="text-center py-16 bg-white border-2 border-dashed border-stone-200 rounded-xl">
                             <Navigation className="w-12 h-12 text-stone-300 mx-auto mb-4" />
                             <h3 className="text-lg font-medium text-stone-700 mb-2">
@@ -294,7 +441,7 @@ const HomePage = () => {
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                            {itineraries.map((itinerary) => (
+                            {unbookedItineraries.map((itinerary) => (
                                 <div 
                                     key={itinerary._id} 
                                     className="group bg-white border border-stone-200 rounded-xl overflow-hidden hover:shadow-lg hover:border-stone-300 transition-all"
@@ -362,8 +509,39 @@ const HomePage = () => {
                     setRatingBooking(null);
                 }}
                 onSubmit={submitRating}
+                submitting={ratingSubmitting}
             />
         )}
+
+        {/* Cancel Booking Confirmation Modal */}
+        <ConfirmationModal
+            isOpen={cancelModalOpen}
+            onClose={() => {
+                setCancelModalOpen(false);
+                setCancelBookingId(null);
+            }}
+            onConfirm={handleCancelBooking}
+            title="Cancel Booking"
+            message="Are you sure you want to cancel this booking request? This action cannot be undone."
+            confirmText="Yes, Cancel Booking"
+            cancelText="Keep Booking"
+            loading={cancelLoading}
+            icon={XCircle}
+        />
+
+        {/* Revision Review Modal */}
+        <RevisionReviewModal
+            isOpen={revisionModalOpen}
+            onClose={() => {
+                setRevisionModalOpen(false);
+                setRevisionBooking(null);
+            }}
+            booking={revisionBooking}
+            onAccept={handleAcceptRevision}
+            onCancel={handleCancelRevisionBooking}
+            acceptLoading={acceptRevisionLoading}
+            cancelLoading={cancelRevisionLoading}
+        />
 
         </div>
     );

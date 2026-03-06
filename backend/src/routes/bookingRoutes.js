@@ -11,6 +11,9 @@ import {
     getMyBookings,
     cancelBooking,
     getBookingStats,
+    requestRevision,
+    updateBookingRevision,
+    acceptRevision,
 } from "../controllers/bookingController.js";
 import { protect, adminOnly, approvedGuideOnly, touristOnly } from "../middleware/authMiddleware.js";
 import { updateLastActivity } from "../middleware/updateLastActivity.js";
@@ -24,6 +27,8 @@ router.use(updateLastActivity);
 router.post("/", touristOnly, createBooking);
 router.get("/my-bookings", touristOnly, getMyBookings);
 router.put("/:id/cancel", touristOnly, cancelBooking);
+router.put("/:id/update-revision", touristOnly, updateBookingRevision);
+router.put("/:id/accept-revision", touristOnly, acceptRevision);
 
 // Guide routes (approved guides only)
 router.get("/pending", approvedGuideOnly, getPendingBookings);
@@ -33,6 +38,7 @@ router.get("/my-rejected", approvedGuideOnly, getMyRejectedBookings);
 
 router.put("/:id/accept", approvedGuideOnly, acceptBooking);
 router.put("/:id/reject", approvedGuideOnly, rejectBooking);
+router.put("/:id/revision", approvedGuideOnly, requestRevision);
 
 router.put("/:id/complete", approvedGuideOnly, completeBooking);
 

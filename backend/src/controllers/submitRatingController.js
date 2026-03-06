@@ -23,6 +23,9 @@ export const submitRating = async (req, res) => {
     if (!rating || rating < 1 || rating > 5)
       return res.status(400).json({ message: "Rating must be 1-5" });
 
+    if (!guideId)
+      return res.status(400).json({ message: "Guide ID is required" });
+
     if (booking.touristId.toString() !== userId.toString())
       return res.status(403).json({ message: "Not authorized to rate this booking" });
 

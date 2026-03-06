@@ -174,38 +174,42 @@ const LandingPage = () => {
             </p>
           </div>
 
-          {/* Map + Itinerary Layout */}
-          <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
-            {/* Map Container */}
-            <div className="flex-1 order-1">
-              <div className="bg-white rounded-2xl shadow-lg border border-stone-200 overflow-hidden">
-                {/* Map */}
-                <div className="relative h-[400px] sm:h-[500px] lg:h-[600px]">
-                  <IntramurosMap
-                    markers={sessionItinerary.length > 0 
-                      ? sessionItinerary.map(l => ({
-                        id: l.id,
-                        name: l.name,
-                        lat: l.lat,
-                        lng: l.lng,
-                        address: l.description,
-                      }))
-                      : filteredLocations.map(l => ({
-                        id: l.id,
-                        name: l.name,
-                        lat: l.lat,
-                        lng: l.lng,
-                        address: l.description,
-                      }))
-                    }
-                    onMarkerClick={(marker) => {
-                      const landmark = INTRAMUROS_LOCATIONS.find(l => l.id === marker.id);
-                      if (landmark) addToItinerary(landmark);
-                    }}
-                    showNumberedPins={sessionItinerary.length > 0}
-                    className="absolute inset-0"
-                  />
-                </div>
+                    {/* Map + Itinerary Layout */}
+                    <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
+                        {/* Map Container */}
+                        <div className="flex-1 order-1">
+                            <div className="bg-white rounded-2xl shadow-lg border border-stone-200 overflow-hidden">
+                                {/* Map */}
+                                <div className="relative h-[400px] sm:h-[500px] lg:h-[600px]">
+                                    <IntramurosMap
+                                        markers={sessionItinerary.length > 0 
+                                            ? sessionItinerary.map(l => ({
+                                                id: l.id,
+                                                name: l.name,
+                                                lat: l.lat,
+                                                lng: l.lng,
+                                                address: l.address,
+                                                description: l.description,
+                                                image: l.image,
+                                            }))
+                                            : filteredLocations.map(l => ({
+                                                id: l.id,
+                                                name: l.name,
+                                                lat: l.lat,
+                                                lng: l.lng,
+                                                address: l.address,
+                                                description: l.description,
+                                                image: l.image,
+                                            }))
+                                        }
+                                        onMarkerClick={(marker) => {
+                                            const landmark = INTRAMUROS_LOCATIONS.find(l => l.id === marker.id);
+                                            if (landmark) addToItinerary(landmark);
+                                        }}
+                                        showNumberedPins={sessionItinerary.length > 0}
+                                        className="absolute inset-0"
+                                    />
+                                </div>
 
                 {/* Controls Bar */}
                 <div className="p-3 sm:p-4 border-t border-stone-200 bg-gradient-to-r from-terracotta-50 to-sand-50">

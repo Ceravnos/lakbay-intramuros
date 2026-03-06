@@ -1,15 +1,16 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { GoogleMap, useLoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
 import { MapPin, Loader2 } from 'lucide-react';
+import { INTRAMUROS_LOCATIONS, getCategoryConfig } from '../../data/locations';
 
 // Intramuros bounds and center
 const INTRAMUROS_CENTER = {
-    lat: 14.5876,
-    lng: 120.9726,
+    lat: 14.59097751580539, 
+    lng: 120.97563107436508,
 };
 
 const INTRAMUROS_BOUNDS = {
-    north: 14.598,
+    north: 14.606,
     south: 14.578,
     west: 120.963,
     east: 120.982,
@@ -44,7 +45,7 @@ const mapOptions = {
 };
 
 // IMPORTANT: libraries array must be defined outside component to prevent re-renders
-const libraries = ['places'];
+const libraries = ['places', 'marker'];
 
 const IntramurosMap = ({ 
     markers = [], 
@@ -113,6 +114,20 @@ const IntramurosMap = ({
         );
     }
 
+    //marker icons
+
+    const getMarkerIcon = (location) => {
+        const category = getCategoryConfig(location.category);
+
+        if (!category.markerIcon) return undefined;
+
+        return {
+            url: category.markerIcon,
+            scaledSize: new window.google.maps.Size(40, 40),
+            anchor: new window.google.maps.Point(20, 40),
+        };
+    };
+
     return (
         <GoogleMap
             mapContainerStyle={mapContainerStyle}
@@ -140,44 +155,41 @@ const IntramurosMap = ({
             )}
 
             {/* Render markers with sequential numbers */}
-            {markers.map((marker, index) => (
+            {INTRAMUROS_LOCATIONS.map((location) => (
                 <Marker
-                    key={marker.id || marker.placeId || index}
-                    position={{ lat: marker.lat, lng: marker.lng }}
-                    onClick={() => handleMarkerClick(marker)}
-                    label={showNumberedPins ? {
-                        text: String(index + 1),
-                        color: 'white',
-                        fontWeight: 'bold',
-                        fontSize: '12px',
-                    } : undefined}
-                    icon={showNumberedPins ? {
-                        path: window.google.maps.SymbolPath.CIRCLE,
-                        scale: 14,
-                        fillColor: selectedMarkerId === marker.id ? '#B45309' : '#78716C',
-                        fillOpacity: 1,
-                        strokeColor: 'white',
-                        strokeWeight: 2,
-                    } : undefined}
+                    key={location.id}
+                    position={{ lat: location.lat, lng: location.lng }}
+                    icon={getMarkerIcon(location)}
+                    onClick={() => handleMarkerClick(location)}
                 />
             ))}
-
+            
             {/* Info window for selected marker */}
             {selectedMarker && (
                 <InfoWindow
                     position={{ lat: selectedMarker.lat, lng: selectedMarker.lng }}
                     onCloseClick={() => setSelectedMarker(null)}
                 >
-                    <div className="p-1 min-w-[150px]">
+                    <div className="w-64">
+                        {selectedMarker.image && (
+                            <img
+                                src={selectedMarker.image}
+                                alt={selectedMarker.name}
+                                className="w-full h-28 object-cover rounded-md mb-2"
+                            />
+                        )}
+
                         <h3 className="font-semibold text-stone-800 text-sm">
                             {selectedMarker.name}
                         </h3>
-                        {selectedMarker.address && (
-                            <p className="text-stone-500 text-xs mt-1">
-                                {selectedMarker.address}
+
+                        {selectedMarker.description && (
+                            <p className="text-stone-500 text-xs mt-1 leading-snug">
+                                {selectedMarker.description}
                             </p>
                         )}
                     </div>
+
                 </InfoWindow>
             )}
         </GoogleMap>

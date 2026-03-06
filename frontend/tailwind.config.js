@@ -51,16 +51,16 @@ export default {
       },
       keyframes: {
         kenburns: {
-          '0%': {
-            transform: 'scale(1) translate(0, 0)',
+          '0%': { 
+            transform: 'scale(1) translate(var(--start-x), var(--start-y))' 
           },
-          '100%': {
-            transform: 'scale(1.25) translate(-10%, -10%)',
+          '100%': { 
+            transform: 'scale(1.25) translate(var(--end-x), var(--end-y))' 
           },
         },
       },
       animation: {
-        kenburns: 'kenburns 7s ease-in-out infinite alternate',
+        kenburns: 'kenburns 10s ease-in-out forwards',
       },
     },
   },

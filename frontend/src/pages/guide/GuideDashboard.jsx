@@ -105,7 +105,7 @@ const GuideDashboard = () => {
       const handleBookingUpdate = (event) => {
           const { type } = event.detail;
           // Refresh bookings on any booking update
-          if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted') {
+          if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted' || type === 'payment-paid') {
               fetchBookings();
           }
       };
@@ -389,7 +389,11 @@ const GuideDashboard = () => {
                           <div>
                               <p className="text-stone-500 text-sm">Active Tour</p>
                               {acceptedBookings.length > 0 ? (
-                                  <p className="text-sm font-medium text-sage-600 mt-1">In Progress</p>
+                                  <p className="text-sm font-medium text-sage-600 mt-1">
+                                      {acceptedBookings[0].status === 'awaiting_payment' ? 'Awaiting Payment' 
+                                       : acceptedBookings[0].status === 'paid' ? 'Paid' 
+                                       : 'In Progress'}
+                                  </p>
                               ) : (
                                   <p className="text-sm text-stone-400 mt-1">No active tour</p>
                               )}
@@ -421,14 +425,31 @@ const GuideDashboard = () => {
                                       <span>{formatTime(acceptedBookings[0].tripDetails?.preferredDate)}</span>
                                   </div>
                               </div>
-                              <button
-                                  onClick={() => openCompleteModal(acceptedBookings[0]._id)}
-                                  disabled={completeLoading}
-                                  className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                              >
-                                  <CheckCircle className="w-3 h-3" />
-                                  Mark Complete
-                              </button>
+                              {acceptedBookings[0].status === 'awaiting_payment' && (
+                                  <p className="mt-3 text-center text-xs text-amber-600 font-medium">
+                                      Waiting for tourist payment...
+                                  </p>
+                              )}
+                              {acceptedBookings[0].status === 'paid' && (
+                                  <button
+                                      onClick={() => openCompleteModal(acceptedBookings[0]._id)}
+                                      disabled={completeLoading}
+                                      className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                                  >
+                                      <CheckCircle className="w-3 h-3" />
+                                      Mark Complete
+                                  </button>
+                              )}
+                              {acceptedBookings[0].status === 'accepted' && (
+                                  <button
+                                      onClick={() => openCompleteModal(acceptedBookings[0]._id)}
+                                      disabled={completeLoading}
+                                      className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                                  >
+                                      <CheckCircle className="w-3 h-3" />
+                                      Mark Complete
+                                  </button>
+                              )}
                           </div>
                       ) : (
                           <div className="mt-4 pt-4 border-t border-stone-100 text-center">

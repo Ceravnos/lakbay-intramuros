@@ -11,6 +11,7 @@ import bookingRoutes from "./routes/bookingRoutes.js";
 import itineraryRoutes from "./routes/itineraryRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import ratingRoutes from "./routes/ratingRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 
 import { connectDB } from "./config/db.js";
 import rateLimiter from "./middleware/rateLimiter.js";
@@ -63,6 +64,7 @@ app.use("/api/bookings", bookingRoutes)
 app.use("/api/itineraries", itineraryRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/ratings", ratingRoutes);
+app.use("/api/payments", paymentRoutes);
 
 
 // *FOR PRODUCTION ONLY*

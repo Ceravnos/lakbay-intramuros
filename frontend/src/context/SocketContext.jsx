@@ -56,7 +56,7 @@ export const SocketProvider = ({ children }) => {
     });
 
     newSocket.on('booking-accepted', (booking) => {
-      toast.success('Your booking has been accepted!', {
+      toast.success('Your booking has been accepted! Please complete payment.', {
         duration: 5000,
         icon: '✅',
       });
@@ -101,6 +101,14 @@ export const SocketProvider = ({ children }) => {
         icon: '✅',
       });
       window.dispatchEvent(new CustomEvent('booking-update', { detail: { type: 'revision-accepted', booking } }));
+    });
+
+    newSocket.on('payment-paid', (booking) => {
+      toast.success('Payment confirmed! Tour is now active.', {
+        duration: 5000,
+        icon: '💳',
+      });
+      window.dispatchEvent(new CustomEvent('booking-update', { detail: { type: 'payment-paid', booking } }));
     });
 
     setSocket(newSocket);

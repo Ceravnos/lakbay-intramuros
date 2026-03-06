@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router'
 import { AuthProvider } from './context/AuthContext'
+import { SocketProvider } from './context/SocketContext'
 import { GuestRoute, AdminRoute, GuideRoute, ProtectedRoute } from './components/ProtectedRoute'
 
 // Public Pages
@@ -26,8 +27,9 @@ import GuideDashboard from './pages/guide/GuideDashboard'
 const App = () => {
   return (
     <AuthProvider>
-      <div className="relative min-h-screen bg-white">
-        <Routes>
+      <SocketProvider>
+        <div className="relative min-h-screen bg-white">
+          <Routes>
           {/* Public Landing Page with Map */}
           <Route path="/" element={<GuestRoute><LandingPage /></GuestRoute>} />
 
@@ -49,8 +51,9 @@ const App = () => {
           {/* Admin Routes */}
           {/* <Route path="/admin/login" element={<GuestRoute><AdminLoginPage /></GuestRoute>} /> */}
           <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-        </Routes>
-      </div>
+          </Routes>
+        </div>
+      </SocketProvider>
     </AuthProvider>
   );
 }

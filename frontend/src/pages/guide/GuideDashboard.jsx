@@ -4,7 +4,8 @@ import {
   Compass, Clock, CheckCircle, Calendar, Users, MapPin,
   RefreshCw, User, Phone, Mail, ChevronRight, ChevronLeft,
   History, ClipboardList, Loader2, AlertCircle,
-  XCircle, CalendarOff, Plus, X, Eye
+  XCircle, CalendarOff, Plus, X, Eye, Bell,
+  Accessibility, Baby, Heart
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
@@ -12,6 +13,7 @@ import api from "../../lib/axios";
 import Navbar from "../../components/Navbar"
 import ConfirmationModal from "../../components/ConfirmationModal"
 import ItineraryViewModal from "../../components/ItineraryViewModal"
+import ItineraryEditModal from "../../components/ItineraryEditModal"
 
 const GuideDashboard = () => {
   const { user, refreshUser } = useAuth();
@@ -26,6 +28,7 @@ const GuideDashboard = () => {
   
   // Availability management state
   const [unavailableDates, setUnavailableDates] = useState([]);
+  const [selectedDates, setSelectedDates] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
@@ -38,6 +41,23 @@ const GuideDashboard = () => {
   const [itineraryModalOpen, setItineraryModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [revisionLoading, setRevisionLoading] = useState(false);
+  
+  // Itinerary edit modal state (for revision requests)
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editBooking, setEditBooking] = useState(null);
+  
+  // Complete confirmation modal state
+  const [completeModalOpen, setCompleteModalOpen] = useState(false);
+  const [completeBookingId, setCompleteBookingId] = useState(null);
+  const [completeLoading, setCompleteLoading] = useState(false);
+  
+  // Priority assistance labels
+  const PRIORITY_LABELS = {
+    pwd: { label: 'PWD', icon: Accessibility },
+    pregnant: { label: 'Pregnant', icon: Baby },
+    senior: { label: 'Senior', icon: Heart },
+    locomotive: { label: 'Locomotive', icon: AlertCircle },
+  };
   
   const navigate = useNavigate();
 
@@ -80,6 +100,22 @@ const GuideDashboard = () => {
       fetchUnavailableDates();
   }, []);
 
+  // Listen for real-time booking updates via WebSocket
+  useEffect(() => {
+      const handleBookingUpdate = (event) => {
+          const { type } = event.detail;
+          // Refresh bookings on any booking update
+          if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted') {
+              fetchBookings();
+          }
+      };
+
+      window.addEventListener('booking-update', handleBookingUpdate);
+      return () => {
+          window.removeEventListener('booking-update', handleBookingUpdate);
+      };
+  }, []);
+
   const fetchUnavailableDates = async () => {
       try {
           const res = await api.get('/auth/me');
@@ -89,34 +125,84 @@ const GuideDashboard = () => {
       }
   };
 
-  const handleToggleDate = async (dateStr) => {
-      const dateExists = unavailableDates.some(d => {
-          const existing = new Date(d).toISOString().split('T')[0];
-          return existing === dateStr;
-      });
-
-      let newDates;
-      if (dateExists) {
-          newDates = unavailableDates.filter(d => {
-              const existing = new Date(d).toISOString().split('T')[0];
-              return existing !== dateStr;
-          });
+  // Toggle date selection (local state only)
+  const handleToggleDateSelection = (dateStr) => {
+    setSelectedDates(prev => {
+      if (prev.includes(dateStr)) {
+        return prev.filter(d => d !== dateStr);
       } else {
-          newDates = [...unavailableDates, new Date(dateStr).toISOString()];
+        return [...prev, dateStr];
       }
+    });
+  };
 
-      setAvailabilityLoading(true);
-      try {
-          const res = await api.put('/users/unavailable-dates', {
-              unavailableDates: newDates
-          });
-          setUnavailableDates(res.data.unavailableDates);
-          toast.success(dateExists ? 'Date marked as available' : 'Date marked as unavailable');
-      } catch (err) {
-          toast.error('Failed to update availability');
-      } finally {
-          setAvailabilityLoading(false);
-      }
+  // Check if date is selected
+  const isDateSelected = (day) => {
+    const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return selectedDates.includes(dateStr);
+  };
+
+  // Mark selected dates as unavailable
+  const handleMarkUnavailable = async () => {
+    if (selectedDates.length === 0) {
+      toast.error('Please select at least one date');
+      return;
+    }
+
+    const newDates = [
+      ...unavailableDates,
+      ...selectedDates.map(d => new Date(d).toISOString())
+    ];
+
+    // Remove duplicates
+    const uniqueDates = [...new Set(newDates.map(d => new Date(d).toISOString().split('T')[0]))]
+      .map(d => new Date(d).toISOString());
+
+    setAvailabilityLoading(true);
+    try {
+      const res = await api.put('/users/unavailable-dates', {
+        unavailableDates: uniqueDates
+      });
+      setUnavailableDates(res.data.unavailableDates);
+      setSelectedDates([]);
+      toast.success(`${selectedDates.length} date(s) marked as unavailable`);
+    } catch (err) {
+      toast.error('Failed to update availability');
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  // Mark selected dates as available (remove from unavailable)
+  const handleMarkAvailable = async () => {
+    if (selectedDates.length === 0) {
+      toast.error('Please select at least one date');
+      return;
+    }
+
+    const newDates = unavailableDates.filter(d => {
+      const existing = new Date(d).toISOString().split('T')[0];
+      return !selectedDates.includes(existing);
+    });
+
+    setAvailabilityLoading(true);
+    try {
+      const res = await api.put('/users/unavailable-dates', {
+        unavailableDates: newDates
+      });
+      setUnavailableDates(res.data.unavailableDates);
+      setSelectedDates([]);
+      toast.success(`${selectedDates.length} date(s) marked as available`);
+    } catch (err) {
+      toast.error('Failed to update availability');
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  // Clear selection
+  const handleClearSelection = () => {
+    setSelectedDates([]);
   };
 
   const getDaysInMonth = (date) => {
@@ -207,34 +293,51 @@ const GuideDashboard = () => {
       setItineraryModalOpen(true);
   };
 
-  const handleSendRevisionRequest = async (bookingId, note) => {
+  const openEditModal = (booking) => {
+      setEditBooking(booking);
+      setEditModalOpen(true);
+      // Close view modal if open
+      setItineraryModalOpen(false);
+      setSelectedBooking(null);
+  };
+
+  const handleSendRevisionRequest = async (bookingId, note, proposedItinerary) => {
       setRevisionLoading(true);
       try {
-          // For now, we'll just show a toast since the backend endpoint may not exist yet
-          // In a full implementation, this would send a notification to the tourist
-          toast.success("Revision request sent to tourist!");
+          await api.put(`/bookings/${bookingId}/revision`, { note, proposedItinerary });
+          toast.success("Revision sent to tourist!");
+          setEditModalOpen(false);
+          setEditBooking(null);
           setItineraryModalOpen(false);
           setSelectedBooking(null);
+          fetchBookings();
       } catch (error) {
-          toast.error("Failed to send revision request");
+          toast.error(error.response?.data?.message || "Failed to send revision request");
       } finally {
           setRevisionLoading(false);
       }
   };
 
-  const handleComplete = async (bookingId) => {
-      if (!window.confirm("Mark this tour as completed?")) return;
+  const openCompleteModal = (bookingId) => {
+      setCompleteBookingId(bookingId);
+      setCompleteModalOpen(true);
+  };
+
+  const handleComplete = async () => {
+      if (!completeBookingId) return;
       
-      setActionLoading(bookingId);
+      setCompleteLoading(true);
       try {
-          await api.put(`/bookings/${bookingId}/complete`);
+          await api.put(`/bookings/${completeBookingId}/complete`);
           toast.success("Tour marked as complete!");
+          setCompleteModalOpen(false);
+          setCompleteBookingId(null);
           fetchBookings();
           await refreshUser();
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to complete booking");
       } finally {
-          setActionLoading(null);
+          setCompleteLoading(false);
       }
   };
 
@@ -281,16 +384,57 @@ const GuideDashboard = () => {
                           </div>
                       </div>
                   </div>
-                  <div className="bg-white rounded-xl border border-stone-200 p-5">
+                  <div className={`bg-white rounded-xl border ${acceptedBookings.length > 0 ? 'border-sage-300 bg-sage-50/30' : 'border-stone-200'} p-5`}>
                       <div className="flex items-center justify-between">
                           <div>
-                              <p className="text-stone-500 text-sm">Active Tours</p>
-                              <p className="text-3xl font-semibold text-sage-600 mt-1">{stats.active}</p>
+                              <p className="text-stone-500 text-sm">Active Tour</p>
+                              {acceptedBookings.length > 0 ? (
+                                  <p className="text-sm font-medium text-sage-600 mt-1">In Progress</p>
+                              ) : (
+                                  <p className="text-sm text-stone-400 mt-1">No active tour</p>
+                              )}
                           </div>
                           <div className="w-12 h-12 bg-sage-50 rounded-xl flex items-center justify-center">
                               <Users className="w-6 h-6 text-sage-500" />
                           </div>
                       </div>
+                      {/* Show current active tour details */}
+                      {acceptedBookings.length > 0 ? (
+                          <div className="mt-4 pt-4 border-t border-sage-200">
+                              <div className="flex items-center gap-2 mb-2">
+                                  <MapPin className="w-4 h-4 text-sage-600" />
+                                  <span className="font-medium text-stone-800 text-sm">
+                                      {acceptedBookings[0].tripDetails?.title}
+                                  </span>
+                              </div>
+                              <div className="space-y-1 text-xs text-stone-600">
+                                  <div className="flex items-center gap-2">
+                                      <User className="w-3 h-3 text-stone-400" />
+                                      <span>{acceptedBookings[0].touristId?.fullName}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                      <Calendar className="w-3 h-3 text-stone-400" />
+                                      <span>{formatDate(acceptedBookings[0].tripDetails?.preferredDate)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                      <Clock className="w-3 h-3 text-stone-400" />
+                                      <span>{formatTime(acceptedBookings[0].tripDetails?.preferredDate)}</span>
+                                  </div>
+                              </div>
+                              <button
+                                  onClick={() => openCompleteModal(acceptedBookings[0]._id)}
+                                  disabled={completeLoading}
+                                  className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                  <CheckCircle className="w-3 h-3" />
+                                  Mark Complete
+                              </button>
+                          </div>
+                      ) : (
+                          <div className="mt-4 pt-4 border-t border-stone-100 text-center">
+                              <p className="text-xs text-stone-400">You have no active tours</p>
+                          </div>
+                      )}
                   </div>
                   <div className="bg-white rounded-xl border border-stone-200 p-5">
                       <div className="flex items-center justify-between">
@@ -332,22 +476,6 @@ const GuideDashboard = () => {
                           {stats.pending > 0 && (
                               <span className="px-2 py-0.5 bg-terracotta-100 text-terracotta-700 text-xs rounded-full">
                                   {stats.pending}
-                              </span>
-                          )}
-                      </button>
-                      <button
-                          onClick={() => setActiveTab("active")}
-                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-colors ${
-                              activeTab === "active"
-                                  ? "text-sage-600 border-b-2 border-sage-600 bg-sage-50/50"
-                                  : "text-stone-500 hover:text-stone-700 hover:bg-stone-50"
-                          }`}
-                      >
-                          <Users className="w-4 h-4" />
-                          Active Tours
-                          {stats.active > 0 && (
-                              <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
-                                  {stats.active}
                               </span>
                           )}
                       </button>
@@ -462,6 +590,27 @@ const GuideDashboard = () => {
                                                                   <Users className="w-4 h-4 text-stone-400" />
                                                                   <span>{booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}</span>
                                                               </div>
+                                                              {booking.tripDetails?.meetingPoint && (
+                                                                  <div className="flex items-center gap-2">
+                                                                      <MapPin className="w-4 h-4 text-stone-400" />
+                                                                      <span>Meeting: {booking.tripDetails.meetingPoint}</span>
+                                                                  </div>
+                                                              )}
+                                                              {booking.tripDetails?.priorityAssistance?.length > 0 && (
+                                                                  <div className="flex flex-wrap gap-2 mt-2">
+                                                                      {booking.tripDetails.priorityAssistance.map(priority => {
+                                                                          const config = PRIORITY_LABELS[priority];
+                                                                          if (!config) return null;
+                                                                          const Icon = config.icon;
+                                                                          return (
+                                                                              <span key={priority} className="inline-flex items-center gap-1 px-2 py-1 bg-terracotta-50 text-terracotta-700 text-xs rounded-full">
+                                                                                  <Icon className="w-3 h-3" />
+                                                                                  {config.label}
+                                                                              </span>
+                                                                          );
+                                                                      })}
+                                                                  </div>
+                                                              )}
                                                               {booking.tripDetails?.notes && (
                                                                   <p className="text-stone-500 italic mt-2 pl-6">
                                                                       "{booking.tripDetails.notes}"
@@ -507,77 +656,6 @@ const GuideDashboard = () => {
                                                               )}
                                                           </button>
                                                       </div>
-                                                  </div>
-                                              </div>
-                                          ))
-                                      )}
-                                  </div>
-                              )}
-
-                              {/* Active Tours */}
-                              {activeTab === "active" && (
-                                  <div className="space-y-4">
-                                      {acceptedBookings.length === 0 ? (
-                                          <div className="text-center py-12">
-                                              <Users className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-                                              <p className="text-stone-500">No active tours</p>
-                                              <p className="text-stone-400 text-sm mt-1">Accept a booking to see it here</p>
-                                          </div>
-                                      ) : (
-                                          acceptedBookings.map((booking) => (
-                                              <div key={booking._id} className="border border-sage-200 bg-sage-50/30 rounded-xl p-5">
-                                                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                      <div className="flex-1">
-                                                          <div className="flex items-center gap-2 mb-2">
-                                                              <MapPin className="w-4 h-4 text-sage-600" />
-                                                              <h3 className="font-serif font-semibold text-stone-800">
-                                                                  {booking.tripDetails?.title}
-                                                              </h3>
-                                                              <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
-                                                                  Active
-                                                              </span>
-                                                          </div>
-                                                          <div className="space-y-2 text-sm text-stone-600">
-                                                              <div className="flex items-center gap-2">
-                                                                  <User className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.touristId?.fullName}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Mail className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.touristId?.email}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Phone className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.touristId?.phoneNumber}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Calendar className="w-4 h-4 text-stone-400" />
-                                                                  <span>{formatDate(booking.tripDetails?.preferredDate)}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Clock className="w-4 h-4 text-stone-400" />
-                                                                  <span>{formatTime(booking.tripDetails?.preferredDate)}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Users className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}</span>
-                                                              </div>
-                                                          </div>
-                                                      </div>
-                                                      <button
-                                                          onClick={() => handleComplete(booking._id)}
-                                                          disabled={actionLoading === booking._id}
-                                                          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-800 hover:bg-stone-900 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full sm:w-auto"
-                                                      >
-                                                          {actionLoading === booking._id ? (
-                                                              <Loader2 className="w-4 h-4 animate-spin" />
-                                                          ) : (
-                                                              <>
-                                                                  <CheckCircle className="w-4 h-4" />
-                                                                  Mark Complete
-                                                              </>
-                                                          )}
-                                                      </button>
                                                   </div>
                                               </div>
                                           ))
@@ -642,128 +720,171 @@ const GuideDashboard = () => {
 
                               {/* Availability Management */}
                               {activeTab === "availability" && (
-                                  <div>
-                                      <div className="mb-6">
-                                          <h3 className="font-semibold text-stone-800 mb-2">Manage Your Availability</h3>
-                                          <p className="text-sm text-stone-500">
-                                              Click on dates to mark them as unavailable. Tourists won't be able to book you on these dates.
-                                          </p>
-                                      </div>
-
-                                      {/* Calendar */}
-                                      <div className="max-w-md mx-auto">
-                                          {/* Month Navigation */}
-                                          <div className="flex items-center justify-between mb-4">
-                                              <button
-                                                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                                                  disabled={isPastMonth()}
-                                                  className="p-2 hover:bg-stone-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                              >
-                                                  <ChevronLeft className="w-5 h-5 text-stone-600" />
-                                              </button>
-                                              <span className="font-medium text-stone-800">
-                                                  {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-                                              </span>
-                                              <button
-                                                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                                                  className="p-2 hover:bg-stone-100 rounded-lg transition-colors"
-                                              >
-                                                  <ChevronRight className="w-5 h-5 text-stone-600" />
-                                              </button>
-                                          </div>
-
-                                          {/* Day Headers */}
-                                          <div className="grid grid-cols-7 gap-1 mb-2">
-                                              {dayNames.map(day => (
-                                                  <div key={day} className="text-center text-xs font-medium text-stone-500 py-2">
-                                                      {day}
-                                                  </div>
-                                              ))}
-                                          </div>
-
-                                          {/* Calendar Grid */}
-                                          <div className="grid grid-cols-7 gap-1">
-                                              {/* Empty cells for days before the first of the month */}
-                                              {Array.from({ length: startingDay }).map((_, i) => (
-                                                  <div key={`empty-${i}`} className="aspect-square" />
-                                              ))}
-                                              
-                                              {/* Days of the month */}
-                                              {Array.from({ length: daysInMonth }).map((_, i) => {
-                                                  const day = i + 1;
-                                                  const unavailable = isDateUnavailable(day);
-                                                  const past = isDatePast(day);
-                                                  const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-                                                  return (
-                                                      <button
-                                                          key={day}
-                                                          onClick={() => !past && handleToggleDate(dateStr)}
-                                                          disabled={past || availabilityLoading}
-                                                          className={`
-                                                              aspect-square flex items-center justify-center rounded-lg text-sm font-medium transition-all relative
-                                                              ${unavailable 
-                                                                  ? 'bg-red-100 text-red-600 hover:bg-red-200' 
-                                                                  : past
-                                                                      ? 'bg-stone-100 text-stone-300 cursor-not-allowed'
-                                                                      : 'hover:bg-sage-50 text-stone-700 hover:text-sage-700'
-                                                              }
-                                                              ${availabilityLoading ? 'opacity-50' : ''}
-                                                          `}
-                                                          title={unavailable ? 'Click to mark as available' : past ? 'Past date' : 'Click to mark as unavailable'}
-                                                      >
-                                                          {day}
-                                                          {unavailable && (
-                                                              <X className="w-3 h-3 absolute top-0.5 right-0.5 text-red-500" />
-                                                          )}
-                                                      </button>
-                                                  );
-                                              })}
-                                          </div>
-
-                                          {/* Legend */}
-                                          <div className="flex items-center justify-center gap-6 mt-6 text-xs text-stone-500">
-                                              <div className="flex items-center gap-2">
-                                                  <div className="w-4 h-4 bg-white border border-stone-200 rounded" />
-                                                  <span>Available</span>
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                  <div className="w-4 h-4 bg-red-100 border border-red-200 rounded" />
-                                                  <span>Unavailable</span>
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                  <div className="w-4 h-4 bg-stone-100 border border-stone-200 rounded" />
-                                                  <span>Past</span>
-                                              </div>
-                                          </div>
-
-                                          {/* Unavailable dates summary */}
-                                          {unavailableDates.length > 0 && (
-                                              <div className="mt-6 p-4 bg-stone-50 rounded-xl">
-                                                  <h4 className="text-sm font-medium text-stone-700 mb-2">Your Unavailable Dates</h4>
-                                                  <div className="flex flex-wrap gap-2">
-                                                      {unavailableDates
-                                                          .filter(d => new Date(d) >= new Date().setHours(0,0,0,0))
-                                                          .sort((a, b) => new Date(a) - new Date(b))
-                                                          .slice(0, 10)
-                                                          .map((date, idx) => (
-                                                              <span 
-                                                                  key={idx}
-                                                                  className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full"
-                                                              >
-                                                                  {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                                              </span>
-                                                          ))}
-                                                      {unavailableDates.filter(d => new Date(d) >= new Date().setHours(0,0,0,0)).length > 10 && (
-                                                          <span className="px-2 py-1 bg-stone-200 text-stone-600 text-xs rounded-full">
-                                                              +{unavailableDates.filter(d => new Date(d) >= new Date().setHours(0,0,0,0)).length - 10} more
-                                                          </span>
-                                                      )}
-                                                  </div>
-                                              </div>
-                                          )}
-                                      </div>
+                                <div>
+                                  <div className="mb-6">
+                                    <h3 className="font-semibold text-stone-800 mb-2">Manage Your Availability</h3>
+                                    <p className="text-sm text-stone-500">
+                                      Select dates on the calendar, then click "Mark Unavailable" or "Mark Available" to update your availability.
+                                    </p>
                                   </div>
+
+                                  {/* Calendar */}
+                                  <div className="max-w-md mx-auto">
+                                    {/* Month Navigation */}
+                                    <div className="flex items-center justify-between mb-4">
+                                      <button
+                                        onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                                        disabled={isPastMonth()}
+                                        className="p-2 hover:bg-stone-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        <ChevronLeft className="w-5 h-5 text-stone-600" />
+                                      </button>
+                                      <span className="font-medium text-stone-800">
+                                        {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+                                      </span>
+                                      <button
+                                        onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                                        className="p-2 hover:bg-stone-100 rounded-lg transition-colors"
+                                      >
+                                        <ChevronRight className="w-5 h-5 text-stone-600" />
+                                      </button>
+                                    </div>
+
+                                    {/* Day Headers */}
+                                    <div className="grid grid-cols-7 gap-1 mb-2">
+                                      {dayNames.map(day => (
+                                        <div key={day} className="text-center text-xs font-medium text-stone-500 py-2">
+                                          {day}
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {/* Calendar Grid */}
+                                    <div className="grid grid-cols-7 gap-1">
+                                      {/* Empty cells for days before the first of the month */}
+                                      {Array.from({ length: startingDay }).map((_, i) => (
+                                        <div key={`empty-${i}`} className="aspect-square" />
+                                      ))}
+                                      
+                                      {/* Days of the month */}
+                                      {Array.from({ length: daysInMonth }).map((_, i) => {
+                                        const day = i + 1;
+                                        const unavailable = isDateUnavailable(day);
+                                        const selected = isDateSelected(day);
+                                        const past = isDatePast(day);
+                                        const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+                                        return (
+                                          <button
+                                            key={day}
+                                            onClick={() => !past && handleToggleDateSelection(dateStr)}
+                                            disabled={past || availabilityLoading}
+                                            className={`
+                                              aspect-square flex items-center justify-center rounded-lg text-sm font-medium transition-all relative
+                                              ${selected
+                                                ? 'bg-terracotta-500 text-white ring-2 ring-terracotta-300'
+                                                : unavailable 
+                                                  ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                                                  : past
+                                                    ? 'bg-stone-100 text-stone-300 cursor-not-allowed'
+                                                    : 'hover:bg-sage-50 text-stone-700 hover:text-sage-700'
+                                              }
+                                              ${availabilityLoading ? 'opacity-50' : ''}
+                                            `}
+                                            title={past ? 'Past date' : selected ? 'Selected' : unavailable ? 'Unavailable' : 'Available'}
+                                          >
+                                            {day}
+                                            {unavailable && !selected && (
+                                              <X className="w-3 h-3 absolute top-0.5 right-0.5 text-red-500" />
+                                            )}
+                                            {selected && (
+                                              <CheckCircle className="w-3 h-3 absolute top-0.5 right-0.5 text-white" />
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="mt-6 space-y-3">
+                                      {selectedDates.length > 0 && (
+                                        <div className="p-3 bg-terracotta-50 border border-terracotta-200 rounded-xl">
+                                          <p className="text-sm text-terracotta-700 mb-3">
+                                            <span className="font-medium">{selectedDates.length}</span> date(s) selected
+                                          </p>
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={handleMarkUnavailable}
+                                              disabled={availabilityLoading}
+                                              className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                              {availabilityLoading ? 'Updating...' : 'Mark Unavailable'}
+                                            </button>
+                                            <button
+                                              onClick={handleMarkAvailable}
+                                              disabled={availabilityLoading}
+                                              className="flex-1 px-4 py-2 bg-sage-600 hover:bg-sage-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                              {availabilityLoading ? 'Updating...' : 'Mark Available'}
+                                            </button>
+                                          </div>
+                                          <button
+                                            onClick={handleClearSelection}
+                                            className="w-full mt-2 px-4 py-2 text-stone-600 hover:bg-stone-100 text-sm font-medium rounded-lg transition-colors"
+                                          >
+                                            Clear Selection
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Legend */}
+                                    <div className="flex items-center justify-center gap-4 mt-6 text-xs text-stone-500 flex-wrap">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-white border border-stone-200 rounded" />
+                                        <span>Available</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-red-100 border border-red-200 rounded" />
+                                        <span>Unavailable</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-terracotta-500 rounded" />
+                                        <span>Selected</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-stone-100 border border-stone-200 rounded" />
+                                        <span>Past</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Unavailable dates summary */}
+                                    {unavailableDates.length > 0 && (
+                                      <div className="mt-6 p-4 bg-stone-50 rounded-xl">
+                                        <h4 className="text-sm font-medium text-stone-700 mb-2">Your Unavailable Dates</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                          {unavailableDates
+                                            .filter(d => new Date(d) >= new Date().setHours(0,0,0,0))
+                                            .sort((a, b) => new Date(a) - new Date(b))
+                                            .slice(0, 10)
+                                            .map((date, idx) => (
+                                              <span 
+                                                key={idx}
+                                                className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full"
+                                              >
+                                                {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                              </span>
+                                            ))}
+                                          {unavailableDates.filter(d => new Date(d) >= new Date().setHours(0,0,0,0)).length > 10 && (
+                                            <span className="px-2 py-1 bg-stone-200 text-stone-600 text-xs rounded-full">
+                                              +{unavailableDates.filter(d => new Date(d) >= new Date().setHours(0,0,0,0)).length - 10} more
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               )}
 
                           </>
@@ -796,8 +917,35 @@ const GuideDashboard = () => {
                   setSelectedBooking(null);
               }}
               booking={selectedBooking}
-              onSendRevisionRequest={handleSendRevisionRequest}
+              onEditItinerary={openEditModal}
+          />
+
+          {/* Itinerary Edit Modal for Revision Requests */}
+          <ItineraryEditModal
+              isOpen={editModalOpen}
+              onClose={() => {
+                  setEditModalOpen(false);
+                  setEditBooking(null);
+              }}
+              booking={editBooking}
+              onSubmitRevision={handleSendRevisionRequest}
               loading={revisionLoading}
+          />
+
+          {/* Complete Tour Confirmation Modal */}
+          <ConfirmationModal
+              isOpen={completeModalOpen}
+              onClose={() => {
+                  setCompleteModalOpen(false);
+                  setCompleteBookingId(null);
+              }}
+              onConfirm={handleComplete}
+              title="Complete Tour"
+              message="Are you sure you want to mark this tour as completed? The tourist will be notified and prompted to rate their experience."
+              confirmText="Yes, Mark Complete"
+              cancelText="Cancel"
+              loading={completeLoading}
+              icon={CheckCircle}
           />
       </div>
   );

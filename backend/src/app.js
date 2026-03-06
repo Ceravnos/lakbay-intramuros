@@ -1,7 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import path from "path"
+import path from "path";
+import http from "http";
 
 import travelRoutes from "./routes/travelRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -13,7 +14,7 @@ import ratingRoutes from "./routes/ratingRoutes.js";
 
 import { connectDB } from "./config/db.js";
 import rateLimiter from "./middleware/rateLimiter.js";
-import { startGuideInactivityWatcher } from "./services/guideInactivityWatcher.js";
+import { initSocket } from "./config/socket.js";
 
 dotenv.config();
 
@@ -78,13 +79,14 @@ if(process.env.NODE_ENV === "production") {
 /* ======================
    START SERVER
 ====================== */
+const server = http.createServer(app);
+initSocket(server);
+
 connectDB().then(() => {
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
         console.log(`[app.js] Server started on PORT: ${PORT}`);
     });
 });
-
-startGuideInactivityWatcher();
 
 
  

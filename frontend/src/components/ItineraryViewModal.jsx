@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { 
     X, MapPin, Clock, Users, Calendar, Navigation, 
-    MessageSquare, Send, Loader2, Accessibility, Baby, Heart, AlertCircle
+    MessageSquare, Send, Accessibility, Baby, Heart, AlertCircle
 } from 'lucide-react';
 
 const PRIORITY_LABELS = {
@@ -16,23 +15,13 @@ const ItineraryViewModal = ({
     onClose,
     booking,
     onSendRevisionRequest,
+    onEditItinerary,
     loading = false,
 }) => {
-    const [revisionNote, setRevisionNote] = useState('');
-    const [showRevisionForm, setShowRevisionForm] = useState(false);
-
     if (!isOpen || !booking) return null;
 
     const itinerary = booking.itineraryId;
     const tripDetails = booking.tripDetails;
-
-    const handleSendRevision = () => {
-        if (revisionNote.trim() && onSendRevisionRequest) {
-            onSendRevisionRequest(booking._id, revisionNote);
-            setRevisionNote('');
-            setShowRevisionForm(false);
-        }
-    };
 
     const formatDate = (date) => {
         return new Date(date).toLocaleDateString('en-US', {
@@ -163,61 +152,24 @@ const ItineraryViewModal = ({
                     </div>
 
                     {/* Revision Request Section */}
-                    <div className="bg-sage-50 border border-sage-200 rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <h4 className="font-medium text-stone-800 flex items-center gap-2">
+                    {onEditItinerary && (
+                        <div className="bg-sage-50 border border-sage-200 rounded-xl p-4">
+                            <h4 className="font-medium text-stone-800 flex items-center gap-2 mb-2">
                                 <MessageSquare className="w-4 h-4 text-sage-600" />
-                                Request Itinerary Revision
+                                Suggest Changes
                             </h4>
-                            {!showRevisionForm && (
-                                <button
-                                    onClick={() => setShowRevisionForm(true)}
-                                    className="text-sm text-sage-700 hover:text-sage-800 font-medium"
-                                >
-                                    Add Note
-                                </button>
-                            )}
-                        </div>
-                        
-                        {showRevisionForm ? (
-                            <div className="space-y-3">
-                                <textarea
-                                    value={revisionNote}
-                                    onChange={(e) => setRevisionNote(e.target.value)}
-                                    placeholder="Suggest changes to the itinerary (e.g., add/remove stops, adjust order, timing concerns)..."
-                                    rows={3}
-                                    className="w-full px-3 py-2 bg-white border border-sage-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-500 resize-none text-sm"
-                                />
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={handleSendRevision}
-                                        disabled={!revisionNote.trim() || loading}
-                                        className="flex items-center gap-2 px-4 py-2 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 text-sm"
-                                    >
-                                        {loading ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Send className="w-4 h-4" />
-                                        )}
-                                        Send to Tourist
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setShowRevisionForm(false);
-                                            setRevisionNote('');
-                                        }}
-                                        className="px-4 py-2 text-stone-600 hover:bg-stone-100 font-medium rounded-lg transition-colors text-sm"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-sm text-stone-600">
-                                If you'd like to suggest changes to the itinerary before accepting, you can send a revision request to the tourist.
+                            <p className="text-sm text-stone-600 mb-3">
+                                If you'd like to suggest changes to the itinerary before accepting, you can edit and propose a revised version.
                             </p>
-                        )}
-                    </div>
+                            <button
+                                onClick={() => onEditItinerary(booking)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors text-sm"
+                            >
+                                <Send className="w-4 h-4" />
+                                Edit & Send Revision
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer */}

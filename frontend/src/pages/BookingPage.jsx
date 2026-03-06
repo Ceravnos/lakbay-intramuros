@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router';
 import { 
     MapPin, Calendar, Users, Clock, ChevronLeft, Loader2, 
     CheckCircle, User, Phone, Star, CalendarDays, Sun, Sunset,
-    Accessibility, Baby, Heart, AlertCircle
+    Accessibility, Baby, Heart, AlertCircle, Edit3
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
@@ -18,6 +18,11 @@ const BookingPage = () => {
     const [selectedGuide, setSelectedGuide] = useState(null);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    
+    // Revision mode - when updating an existing booking
+    const [isRevisionMode, setIsRevisionMode] = useState(false);
+    const [existingBooking, setExistingBooking] = useState(null);
+    
     const [bookingDetails, setBookingDetails] = useState({
         preferredDate: '',
         preferredTime: '',
@@ -78,7 +83,44 @@ const BookingPage = () => {
 
     useEffect(() => {
         fetchData();
-    }, [itineraryId]);
+        
+        // Check if this is a revision update
+        if (location.state?.revisionBookingId) {
+            fetchExistingBooking(location.state.revisionBookingId);
+        }
+    }, [itineraryId, location.state?.revisionBookingId]);
+
+    const fetchExistingBooking = async (bookingId) => {
+        try {
+            const res = await api.get('/bookings/my-bookings');
+            const booking = res.data.find(b => b._id === bookingId);
+            if (booking && booking.revisionRequested) {
+                setIsRevisionMode(true);
+                setExistingBooking(booking);
+                
+                // Pre-fill form with existing booking details
+                const existingDate = booking.tripDetails?.preferredDate;
+                const dateValue = existingDate ? toDateInputValue(existingDate) : '';
+                const existingTime = existingDate ? (new Date(existingDate).getHours() < 12 ? 'AM' : 'PM') : '';
+                
+                setBookingDetails({
+                    preferredDate: dateValue,
+                    preferredTime: existingTime,
+                    numberOfPeople: booking.tripDetails?.numberOfPeople || 1,
+                    notes: booking.tripDetails?.notes || '',
+                    priorityAssistance: booking.tripDetails?.priorityAssistance || [],
+                    meetingPoint: booking.tripDetails?.meetingPoint || '',
+                });
+                
+                // Set the existing guide
+                if (booking.guideId) {
+                    setSelectedGuide(booking.guideId);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch existing booking:', error);
+        }
+    };
 
     // Pre-fill from navigation state (from ItineraryBuilderPage)
     useEffect(() => {
@@ -169,7 +211,7 @@ const BookingPage = () => {
             return;
         }
 
-        if (!selectedGuide) {
+        if (!selectedGuide && !isRevisionMode) {
             toast.error('Please select a guide');
             return;
         }
@@ -186,20 +228,35 @@ const BookingPage = () => {
 
         setSubmitting(true);
         try {
-            await api.post('/bookings', {
-                itineraryId,
-                guideId: selectedGuide._id,
-                tripDetails: {
-                    title: itinerary.name,
-                    preferredDate: preferredDateTime,
-                    numberOfPeople: bookingDetails.numberOfPeople,
-                    notes: bookingDetails.notes,
-                    priorityAssistance: bookingDetails.priorityAssistance,
-                    meetingPoint: bookingDetails.meetingPoint,
-                },
-            });
-
-            toast.success('Booking request sent!');
+            if (isRevisionMode && existingBooking) {
+                // Update existing booking
+                await api.put(`/bookings/${existingBooking._id}/update-revision`, {
+                    tripDetails: {
+                        title: itinerary.name,
+                        preferredDate: preferredDateTime,
+                        numberOfPeople: bookingDetails.numberOfPeople,
+                        notes: bookingDetails.notes,
+                        priorityAssistance: bookingDetails.priorityAssistance,
+                        meetingPoint: bookingDetails.meetingPoint,
+                    },
+                });
+                toast.success('Booking updated successfully!');
+            } else {
+                // Create new booking
+                await api.post('/bookings', {
+                    itineraryId,
+                    guideId: selectedGuide._id,
+                    tripDetails: {
+                        title: itinerary.name,
+                        preferredDate: preferredDateTime,
+                        numberOfPeople: bookingDetails.numberOfPeople,
+                        notes: bookingDetails.notes,
+                        priorityAssistance: bookingDetails.priorityAssistance,
+                        meetingPoint: bookingDetails.meetingPoint,
+                    },
+                });
+                toast.success('Booking request sent!');
+            }
             navigate('/dashboard');
         } catch (error) {
             // Detect if backend returned 409
@@ -231,6 +288,24 @@ const BookingPage = () => {
         <div className="min-h-screen bg-stone-50">
             <Navbar />
             
+            {/* Revision Banner */}
+            {isRevisionMode && existingBooking && (
+                <div className="bg-terracotta-50 border-b border-terracotta-200 px-4 py-3">
+                    <div className="max-w-4xl mx-auto flex items-center gap-3">
+                        <div className="w-8 h-8 bg-terracotta-100 rounded-full flex items-center justify-center">
+                            <Edit3 className="w-4 h-4 text-terracotta-600" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-terracotta-800">Revision Requested</p>
+                            <p className="text-xs text-terracotta-600">
+                                {existingBooking.guideId?.fullName || 'Your guide'} requested changes to this booking
+                                {existingBooking.revisionNote && `: "${existingBooking.revisionNote}"`}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <div className="bg-white border-b border-stone-200">
                 <div className="max-w-4xl mx-auto px-4 py-6">
@@ -242,10 +317,13 @@ const BookingPage = () => {
                         Back
                     </button>
                     <h1 className="text-2xl font-serif font-semibold text-stone-800">
-                        Book a Guide
+                        {isRevisionMode ? 'Update Booking' : 'Book a Guide'}
                     </h1>
                     <p className="text-stone-500 mt-1">
-                        Connect with a local guide for your Intramuros tour
+                        {isRevisionMode 
+                            ? 'Make the requested changes and resubmit your booking'
+                            : 'Connect with a local guide for your Intramuros tour'
+                        }
                     </p>
                 </div>
             </div>
@@ -582,17 +660,22 @@ const BookingPage = () => {
                             <div className="border-t border-stone-200 mt-4 pt-4">
                                 <button
                                     onClick={handleSubmitBooking}
-                                    disabled={submitting || !selectedGuide || !bookingDetails.preferredDate || !bookingDetails.preferredTime || !bookingDetails.meetingPoint}
+                                    disabled={submitting || (!selectedGuide && !isRevisionMode) || !bookingDetails.preferredDate || !bookingDetails.preferredTime || !bookingDetails.meetingPoint}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {submitting ? (
                                         <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : isRevisionMode ? (
+                                        'Update Booking'
                                     ) : (
                                         'Send Booking Request'
                                     )}
                                 </button>
                                 <p className="text-xs text-stone-500 text-center mt-2">
-                                    The guide will review and accept your request
+                                    {isRevisionMode 
+                                        ? 'Your updated booking will be sent to the guide'
+                                        : 'The guide will review and accept your request'
+                                    }
                                 </p>
                             </div>
                         </div>

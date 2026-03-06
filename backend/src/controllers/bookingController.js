@@ -47,7 +47,7 @@ export const createBooking = async (req, res) => {
         const existingBooking = await Booking.findOne({
             touristId,
             itineraryId,
-            status: { $in: ["pending", "accepted"] },
+            status: { $in: ["pending", "accepted", "awaiting_payment", "paid"] },
         });
 
         if (existingBooking) {
@@ -128,7 +128,7 @@ export const getMyAcceptedBookings = async (req, res) => {
         
         const acceptedBookings = await Booking.find({ 
             guideId, 
-            status: "accepted" 
+            status: { $in: ["accepted", "awaiting_payment", "paid"] } 
         })
             .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId")
@@ -214,7 +214,7 @@ export const acceptBooking = async (req, res) => {
             return res.status(403).json({ message: "You can only accept bookings assigned to you" });
         }
 
-        booking.status = "accepted";
+        booking.status = "awaiting_payment";
         booking.acceptedAt = new Date();
         await booking.save();
 
@@ -294,8 +294,8 @@ export const completeBooking = async (req, res) => {
             return res.status(404).json({ message: "Booking not found" });
         }
 
-        if (booking.status !== "accepted") {
-            return res.status(400).json({ message: "Only accepted bookings can be completed" });
+        if (!["accepted", "paid"].includes(booking.status)) {
+            return res.status(400).json({ message: "Only accepted or paid bookings can be completed" });
         }
 
         if (booking.guideId.toString() !== guideId.toString()) {
@@ -360,8 +360,8 @@ export const cancelBooking = async (req, res) => {
             return res.status(403).json({ message: "You can only cancel your own bookings" });
         }
 
-        if (booking.status !== "pending") {
-            return res.status(400).json({ message: "Only pending bookings can be cancelled" });
+        if (!["pending", "awaiting_payment"].includes(booking.status)) {
+            return res.status(400).json({ message: "Only pending or awaiting payment bookings can be cancelled" });
         }
 
         booking.status = "cancelled";
@@ -570,6 +570,8 @@ export const getBookingStats = async (req, res) => {
         const totalBookings = await Booking.countDocuments();
         const pendingBookings = await Booking.countDocuments({ status: "pending" });
         const acceptedBookings = await Booking.countDocuments({ status: "accepted" });
+        const awaitingPaymentBookings = await Booking.countDocuments({ status: "awaiting_payment" });
+        const paidBookings = await Booking.countDocuments({ status: "paid" });
         const completedBookings = await Booking.countDocuments({ status: "completed" });
         const cancelledBookings = await Booking.countDocuments({ status: "cancelled" });
 
@@ -577,6 +579,8 @@ export const getBookingStats = async (req, res) => {
             totalBookings,
             pendingBookings,
             acceptedBookings,
+            awaitingPaymentBookings,
+            paidBookings,
             completedBookings,
             cancelledBookings,
         });

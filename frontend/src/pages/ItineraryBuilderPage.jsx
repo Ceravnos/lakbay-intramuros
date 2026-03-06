@@ -97,7 +97,7 @@ const ItineraryBuilderPage = () => {
             const activeBookingFound = res.data.find(
                 b => {
                     const bookingItineraryId = b.itineraryId?._id || b.itineraryId;
-                    return bookingItineraryId === itineraryId && (b.status === 'accepted' || b.status === 'pending');
+                    return bookingItineraryId === itineraryId && ['pending', 'accepted', 'awaiting_payment', 'paid'].includes(b.status);
                 }
             );
             if (activeBookingFound) {
@@ -368,10 +368,17 @@ const ItineraryBuilderPage = () => {
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-sage-800">
-                                    {activeBooking.status === 'accepted' ? 'Tour in Progress' : 'Booking Pending'}
+                                    {activeBooking.status === 'paid' ? 'Tour Paid' 
+                                        : activeBooking.status === 'awaiting_payment' ? 'Awaiting Payment'
+                                        : activeBooking.status === 'accepted' ? 'Tour in Progress' 
+                                        : 'Booking Pending'}
                                 </p>
                                 <p className="text-xs text-sage-600">
-                                    {activeBooking.status === 'accepted'
+                                    {activeBooking.status === 'paid'
+                                        ? `Payment confirmed for tour with ${activeBooking.guideId?.fullName || 'your guide'}`
+                                        : activeBooking.status === 'awaiting_payment'
+                                        ? `Waiting for payment to confirm tour with ${activeBooking.guideId?.fullName || 'your guide'}`
+                                        : activeBooking.status === 'accepted'
                                         ? `This itinerary is currently being used for an active tour with ${activeBooking.guideId?.fullName || 'your guide'}`
                                         : `This itinerary has a pending booking request with ${activeBooking.guideId?.fullName || 'a guide'}`
                                     }

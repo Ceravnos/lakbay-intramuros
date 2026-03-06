@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router'
-import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2, XCircle } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router'
+import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2, XCircle, CreditCard } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
 import { useAuth } from '../context/AuthContext'
@@ -92,6 +92,7 @@ const RatingModal = ({ booking, onClose, onSubmit, submitting }) => {
 
 const HomePage = () => {
     const { user, isAuthenticated, isGuideMode } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [isRateLimited, setIsRateLimited] = useState(false);
     const [itineraries, setItineraries] = useState([]);
     const [myBookings, setMyBookings] = useState([]);
@@ -102,6 +103,7 @@ const HomePage = () => {
     const [cancelBookingId, setCancelBookingId] = useState(null);
     const [cancelLoading, setCancelLoading] = useState(false);
     const [ratingSubmitting, setRatingSubmitting] = useState(false);
+    const [paymentLoading, setPaymentLoading] = useState(null);
     
     // Revision review modal state
     const [revisionModalOpen, setRevisionModalOpen] = useState(false);
@@ -155,6 +157,36 @@ const HomePage = () => {
     useEffect(() => {
         fetchData();
     }, [isAuthenticated, user, fetchData]);
+
+    // Handle payment return from PayMongo checkout
+    useEffect(() => {
+        const paymentStatus = searchParams.get('payment');
+        const bookingId = searchParams.get('bookingId');
+
+        if (paymentStatus && bookingId) {
+            if (paymentStatus === 'success') {
+                // Verify payment with backend
+                const verifyPayment = async () => {
+                    try {
+                        const res = await api.post(`/payments/verify/${bookingId}`);
+                        if (res.data.status === 'paid') {
+                            toast.success('Payment successful. Your tour booking is confirmed.');
+                        } else {
+                            toast.success('Payment is being processed. Your booking will be updated shortly.');
+                        }
+                    } catch (error) {
+                        toast.success('Payment submitted. Your booking will be updated shortly.');
+                    }
+                    fetchData();
+                };
+                verifyPayment();
+            } else if (paymentStatus === 'cancelled') {
+                toast('Payment was cancelled. You can try again anytime.', { icon: '⚠️' });
+            }
+            // Clear URL params
+            setSearchParams({});
+        }
+    }, [searchParams]);
 
     // Listen for real-time booking updates via WebSocket
     useEffect(() => {
@@ -289,8 +321,32 @@ const HomePage = () => {
     };
 
     // Filter out itineraries that have active bookings (pending/accepted)
+    // Handle Pay Now click
+    const handlePayNow = async (booking) => {
+        const PRICE_PER_PERSON = 150;
+        const amount = (booking.tripDetails?.numberOfPeople || 1) * PRICE_PER_PERSON;
+
+        setPaymentLoading(booking._id);
+        try {
+            const res = await api.post('/payments/create', {
+                bookingId: booking._id,
+                amount,
+            });
+
+            if (res.data.checkoutUrl) {
+                window.location.href = res.data.checkoutUrl;
+            } else {
+                toast.error('Failed to get checkout URL');
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to initiate payment');
+        } finally {
+            setPaymentLoading(null);
+        }
+    };
+
     const bookedItineraryIds = myBookings
-        .filter(b => b.status === 'pending' || b.status === 'accepted')
+        .filter(b => ['pending', 'accepted', 'awaiting_payment', 'paid'].includes(b.status))
         .map(b => b.itineraryId?._id || b.itineraryId);
     const unbookedItineraries = itineraries.filter(
         it => !bookedItineraryIds.includes(it._id)
@@ -300,10 +356,25 @@ const HomePage = () => {
         switch (status) {
             case "pending": return 'bg-orange-500 text-white border-sand-300';
             case "accepted": return 'bg-lime-600 text-white border-sage-300';
+            case "awaiting_payment": return 'bg-amber-500 text-white border-amber-300';
+            case "paid": return 'bg-emerald-600 text-white border-emerald-300';
             case "completed": return 'bg-stone-100 text-stone-600 border-stone-300';
             case "cancelled": return 'bg-red-600 text-white border-stone-300';
             case "rejected": return 'bg-red-800 text-white border-stone-300';
             default: return 'bg-stone-100 text-stone-600 border-stone-300';
+        }
+    };
+
+    const getStatusLabel = (status) => {
+        switch (status) {
+            case "pending": return 'Pending';
+            case "accepted": return 'Active';
+            case "awaiting_payment": return 'Awaiting Payment';
+            case "paid": return 'Paid';
+            case "completed": return 'Completed';
+            case "cancelled": return 'Cancelled';
+            case "rejected": return 'Rejected';
+            default: return status;
         }
     };
 
@@ -359,7 +430,7 @@ const HomePage = () => {
                                         <span
                                             className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(booking.status)}`}
                                         >
-                                            {booking.status?.toLowerCase() === "accepted" ? "Active" : booking.status}
+                                            {getStatusLabel(booking.status)}
                                         </span>
                                     </div>
 
@@ -397,13 +468,42 @@ const HomePage = () => {
                                         )}
                                     </div>
 
+                                    {/* Pay Now button */}
+                                    {booking.status === "awaiting_payment" && (
+                                        <div className="mt-4 pt-3 border-t border-stone-100">
+                                            <button
+                                                onClick={() => handlePayNow(booking)}
+                                                disabled={paymentLoading === booking._id}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                                {paymentLoading === booking._id ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <CreditCard className="w-4 h-4" />
+                                                        Pay Now — ₱{(booking.tripDetails?.numberOfPeople || 1) * 150}
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Paid confirmation */}
+                                    {booking.status === "paid" && (
+                                        <div className="mt-4 pt-3 border-t border-stone-100">
+                                            <p className="text-xs text-emerald-600 font-medium text-center">
+                                                ✓ Payment confirmed — Tour booking is active
+                                            </p>
+                                        </div>
+                                    )}
+
                                     {/* Cancel button */}
-                                    {booking.status === "pending" && (
+                                    {(booking.status === "pending" || booking.status === "awaiting_payment") && (
                                         <button
                                             onClick={() => openCancelModal(booking._id)}
-                                            className="absolute bottom-4 right-4 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"
+                                            className={`${booking.status === "awaiting_payment" ? "w-full mt-2 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition" : "absolute bottom-4 right-4 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"}`}
                                         >
-                                            Cancel
+                                            Cancel Booking
                                         </button>
                                     )}
                                 </div>

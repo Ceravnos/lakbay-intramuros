@@ -765,7 +765,7 @@ const ItineraryBuilderPage = () => {
                                 <h3 className="font-medium text-stone-800 mb-2">Preferred Categories</h3>
                                 <p className="text-sm text-stone-500 mb-3">Select your interests for smarter suggestions</p>
                                 <div className="flex flex-wrap gap-2">
-                                    {LOCATION_CATEGORIES.filter(c => c.id !== 'all').map((cat) => (
+                                    {Object.values(LOCATION_CATEGORIES).filter(c => c.id !== 'all').map((cat) => (
                                         <button
                                             key={cat.id}
                                             onClick={() => {

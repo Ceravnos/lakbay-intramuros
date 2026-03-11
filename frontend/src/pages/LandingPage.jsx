@@ -124,7 +124,7 @@ const LandingPage = () => {
         <div className="absolute inset-0 bg-stone-900/60" />
         <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d4a574%22 fill-opacity=%220.08%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-30"></div>
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24 lg:py-32 pt-20 text-center">
-          <MapPin className="w-14 h-14 sm:w-20 sm:h-20 text-amber-400 mx-auto mb-6" />
+          {/* <img src="/favicon_v3.png" alt="Lakbay Intramuros Logo" className="w-14 h-14 sm:w-20 sm:h-20 text-amber-400 mx-auto mb-6" /> */}
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-serif font-bold text-amber-100 mb-4 sm:mb-6">
             Lakbay Intramuros
           </h1>
@@ -174,42 +174,42 @@ const LandingPage = () => {
             </p>
           </div>
 
-                    {/* Map + Itinerary Layout */}
-                    <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
-                        {/* Map Container */}
-                        <div className="flex-1 order-1">
-                            <div className="bg-white rounded-2xl shadow-lg border border-stone-200 overflow-hidden">
-                                {/* Map */}
-                                <div className="relative h-[400px] sm:h-[500px] lg:h-[600px]">
-                                    <IntramurosMap
-                                        markers={sessionItinerary.length > 0 
-                                            ? sessionItinerary.map(l => ({
-                                                id: l.id,
-                                                name: l.name,
-                                                lat: l.lat,
-                                                lng: l.lng,
-                                                address: l.address,
-                                                description: l.description,
-                                                image: l.image,
-                                            }))
-                                            : filteredLocations.map(l => ({
-                                                id: l.id,
-                                                name: l.name,
-                                                lat: l.lat,
-                                                lng: l.lng,
-                                                address: l.address,
-                                                description: l.description,
-                                                image: l.image,
-                                            }))
-                                        }
-                                        onMarkerClick={(marker) => {
-                                            const landmark = INTRAMUROS_LOCATIONS.find(l => l.id === marker.id);
-                                            if (landmark) addToItinerary(landmark);
-                                        }}
-                                        showNumberedPins={sessionItinerary.length > 0}
-                                        className="absolute inset-0"
-                                    />
-                                </div>
+    {/* Map + Itinerary Layout */}
+    <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
+        {/* Map Container */}
+        <div className="flex-1 order-1">
+            <div className="bg-white rounded-2xl shadow-lg border border-stone-200 overflow-hidden">
+              {/* Map */}
+                <div className="relative h-[400px] sm:h-[500px] lg:h-[600px]">
+                  <IntramurosMap
+                      markers={sessionItinerary.length > 0 
+                        ? sessionItinerary.map(l => ({
+                            id: l.id,
+                            name: l.name,
+                            lat: l.lat,
+                            lng: l.lng,
+                            address: l.address,
+                            description: l.description,
+                            image: l.image,
+                        }))
+                        : filteredLocations.map(l => ({
+                            id: l.id,
+                            name: l.name,
+                            lat: l.lat,
+                            lng: l.lng,
+                            address: l.address,
+                            description: l.description,
+                            image: l.image,
+                        }))
+                      }
+                      onMarkerClick={(marker) => {
+                        const landmark = INTRAMUROS_LOCATIONS.find(l => l.id === marker.id);
+                        if (landmark) addToItinerary(landmark);
+                      }}
+                      showNumberedPins={sessionItinerary.length > 0}
+                      className="absolute inset-0"
+                  />
+                </div>
 
                 {/* Controls Bar */}
                 <div className="p-3 sm:p-4 border-t border-stone-200 bg-gradient-to-r from-terracotta-50 to-sand-50">

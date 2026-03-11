@@ -104,11 +104,19 @@ export const SocketProvider = ({ children }) => {
     });
 
     newSocket.on('payment-paid', (booking) => {
-      toast.success('Payment confirmed! Tour is now active.', {
+      toast.success('Payment confirmed! Tour is now scheduled.', {
         duration: 5000,
         icon: '💳',
       });
       window.dispatchEvent(new CustomEvent('booking-update', { detail: { type: 'payment-paid', booking } }));
+    });
+
+    newSocket.on('booking-started', (booking) => {
+      toast.success('Your tour has started! Have a great trip.', {
+        duration: 5000,
+        icon: '🚀',
+      });
+      window.dispatchEvent(new CustomEvent('booking-update', { detail: { type: 'started', booking } }));
     });
 
     setSocket(newSocket);

@@ -5,7 +5,7 @@ import {
   RefreshCw, User, Phone, Mail, ChevronRight, ChevronLeft,
   History, ClipboardList, Loader2, AlertCircle,
   XCircle, CalendarOff, Plus, X, Eye, Bell,
-  Accessibility, Baby, Heart
+  Accessibility, Baby, Heart, Play, CalendarCheck, CreditCard
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
@@ -18,8 +18,10 @@ import ItineraryEditModal from "../../components/ItineraryEditModal"
 const GuideDashboard = () => {
   const { user, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState("pending");
+  const [scheduledSubTab, setScheduledSubTab] = useState("pending_payment");
   const [pendingBookings, setPendingBookings] = useState([]);
   const [acceptedBookings, setAcceptedBookings] = useState([]);
+  const [scheduledBookings, setScheduledBookings] = useState([]);
   const [completedBookings, setCompletedBookings] = useState([]);
   const [rejectedBookings, setRejectedBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +53,11 @@ const GuideDashboard = () => {
   const [completeBookingId, setCompleteBookingId] = useState(null);
   const [completeLoading, setCompleteLoading] = useState(false);
   
+  // Start trip confirmation modal state
+  const [startTripModalOpen, setStartTripModalOpen] = useState(false);
+  const [startTripBookingId, setStartTripBookingId] = useState(null);
+  const [startTripLoading, setStartTripLoading] = useState(false);
+  
   // Priority assistance labels
   const PRIORITY_LABELS = {
     pwd: { label: 'PWD', icon: Accessibility },
@@ -65,14 +72,16 @@ const GuideDashboard = () => {
       setLoading(true);
       setError(null);
       try {
-          const [pendingRes, acceptedRes, historyRes, rejectedRes] = await Promise.all([
+          const [pendingRes, acceptedRes, scheduledRes, historyRes, rejectedRes] = await Promise.all([
               api.get("/bookings/pending"),
               api.get("/bookings/my-accepted"),
+              api.get("/bookings/my-scheduled"),
               api.get("/bookings/history"),
               api.get("/bookings/my-rejected"),
           ]);
           setPendingBookings(pendingRes.data);
           setAcceptedBookings(acceptedRes.data);
+          setScheduledBookings(scheduledRes.data);
           setCompletedBookings(historyRes.data.completedBookings || []);
           setRejectedBookings(rejectedRes.data);
       } catch (err) {
@@ -105,7 +114,7 @@ const GuideDashboard = () => {
       const handleBookingUpdate = (event) => {
           const { type } = event.detail;
           // Refresh bookings on any booking update
-          if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted' || type === 'payment-paid') {
+          if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted' || type === 'payment-paid' || type === 'started') {
               fetchBookings();
           }
       };
@@ -341,6 +350,28 @@ const GuideDashboard = () => {
       }
   };
 
+  const openStartTripModal = (bookingId) => {
+      setStartTripBookingId(bookingId);
+      setStartTripModalOpen(true);
+  };
+
+  const handleStartTrip = async () => {
+      if (!startTripBookingId) return;
+      
+      setStartTripLoading(true);
+      try {
+          await api.put(`/bookings/${startTripBookingId}/start`);
+          toast.success("Trip started successfully!");
+          setStartTripModalOpen(false);
+          setStartTripBookingId(null);
+          fetchBookings();
+      } catch (error) {
+          toast.error(error.response?.data?.message || "Failed to start trip");
+      } finally {
+          setStartTripLoading(false);
+      }
+  };
+
 
   const formatDate = (date) => {
       return new Date(date).toLocaleDateString('en-US', {
@@ -359,8 +390,14 @@ const GuideDashboard = () => {
       })
   };
 
+  const pendingPaymentBookings = scheduledBookings.filter(b => b.status === "awaiting_payment");
+  const confirmedBookings = scheduledBookings.filter(b => b.status === "scheduled");
+
   const stats = {
       pending: pendingBookings.length,
+      scheduled: scheduledBookings.length,
+      pendingPayment: pendingPaymentBookings.length,
+      confirmed: confirmedBookings.length,
       active: acceptedBookings.length,
       completed: completedBookings.length,
       rejected: rejectedBookings.length,
@@ -497,6 +534,22 @@ const GuideDashboard = () => {
                           {stats.pending > 0 && (
                               <span className="px-2 py-0.5 bg-terracotta-100 text-terracotta-700 text-xs rounded-full">
                                   {stats.pending}
+                              </span>
+                          )}
+                      </button>
+                      <button
+                          onClick={() => setActiveTab("scheduled")}
+                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-colors ${
+                              activeTab === "scheduled"
+                                  ? "text-sage-600 border-b-2 border-sage-600 bg-sage-50/50"
+                                  : "text-stone-500 hover:text-stone-700 hover:bg-stone-50"
+                          }`}
+                      >
+                          <CalendarCheck className="w-4 h-4" />
+                          Scheduled
+                          {stats.scheduled > 0 && (
+                              <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
+                                  {stats.scheduled}
                               </span>
                           )}
                       </button>
@@ -680,6 +733,241 @@ const GuideDashboard = () => {
                                                   </div>
                                               </div>
                                           ))
+                                      )}
+                                  </div>
+                              )}
+
+                              {/* Scheduled Bookings */}
+                              {activeTab === "scheduled" && (
+                                  <div>
+                                      {/* Sub-tabs */}
+                                      <div className="flex gap-2 mb-6">
+                                          <button
+                                              onClick={() => setScheduledSubTab("pending_payment")}
+                                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                  scheduledSubTab === "pending_payment"
+                                                      ? "bg-amber-100 text-amber-800 border border-amber-300"
+                                                      : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                              }`}
+                                          >
+                                              <CreditCard className="w-4 h-4" />
+                                              Pending Payment
+                                              {stats.pendingPayment > 0 && (
+                                                  <span className="px-1.5 py-0.5 bg-amber-200 text-amber-800 text-xs rounded-full">
+                                                      {stats.pendingPayment}
+                                                  </span>
+                                              )}
+                                          </button>
+                                          <button
+                                              onClick={() => setScheduledSubTab("confirmed")}
+                                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                  scheduledSubTab === "confirmed"
+                                                      ? "bg-sage-100 text-sage-800 border border-sage-300"
+                                                      : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                              }`}
+                                          >
+                                              <CheckCircle className="w-4 h-4" />
+                                              Confirmed
+                                              {stats.confirmed > 0 && (
+                                                  <span className="px-1.5 py-0.5 bg-sage-200 text-sage-800 text-xs rounded-full">
+                                                      {stats.confirmed}
+                                                  </span>
+                                              )}
+                                          </button>
+                                      </div>
+
+                                      {/* Pending Payment Sub-tab */}
+                                      {scheduledSubTab === "pending_payment" && (
+                                          <div className="space-y-4">
+                                              {pendingPaymentBookings.length === 0 ? (
+                                                  <div className="text-center py-12">
+                                                      <CreditCard className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                                                      <p className="text-stone-500">No bookings pending payment</p>
+                                                      <p className="text-stone-400 text-sm mt-1">
+                                                          Accepted bookings awaiting tourist payment will appear here
+                                                      </p>
+                                                  </div>
+                                              ) : (
+                                                  pendingPaymentBookings.map((booking) => (
+                                                      <div key={booking._id} className="border border-amber-200 rounded-xl p-5 bg-amber-50/30 hover:shadow-md transition-shadow">
+                                                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                              <div className="flex-1">
+                                                                  <div className="flex items-center gap-2 mb-2">
+                                                                      <MapPin className="w-4 h-4 text-amber-600" />
+                                                                      <h3 className="font-serif font-semibold text-stone-800">
+                                                                          {booking.tripDetails?.title}
+                                                                      </h3>
+                                                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
+                                                                          Awaiting Payment
+                                                                      </span>
+                                                                  </div>
+                                                                  <div className="space-y-2 text-sm text-stone-600">
+                                                                      <div className="flex items-center gap-2">
+                                                                          <User className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.touristId?.fullName}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2">
+                                                                          <Mail className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.touristId?.email}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2">
+                                                                          <Phone className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.touristId?.phoneNumber}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2 font-medium text-amber-700">
+                                                                          <Calendar className="w-4 h-4 text-amber-600" />
+                                                                          <span>Scheduled: {formatDate(booking.tripDetails?.preferredDate)}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2 font-medium text-amber-700">
+                                                                          <Clock className="w-4 h-4 text-amber-600" />
+                                                                          <span>Time: {formatTime(booking.tripDetails?.preferredDate)}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2">
+                                                                          <Users className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}</span>
+                                                                      </div>
+                                                                      {booking.tripDetails?.priorityAssistance?.length > 0 && (
+                                                                          <div className="flex flex-wrap gap-2 mt-2">
+                                                                              {booking.tripDetails.priorityAssistance.map(priority => {
+                                                                                  const config = PRIORITY_LABELS[priority];
+                                                                                  if (!config) return null;
+                                                                                  const Icon = config.icon;
+                                                                                  return (
+                                                                                      <span key={priority} className="inline-flex items-center gap-1 px-2 py-1 bg-terracotta-50 text-terracotta-700 text-xs rounded-full">
+                                                                                          <Icon className="w-3 h-3" />
+                                                                                          {config.label}
+                                                                                      </span>
+                                                                                  );
+                                                                              })}
+                                                                          </div>
+                                                                      )}
+                                                                  </div>
+                                                              </div>
+                                                              <div className="flex flex-col gap-2">
+                                                                  <button
+                                                                      onClick={() => openItineraryModal(booking)}
+                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors w-full"
+                                                                  >
+                                                                      <Eye className="w-4 h-4" />
+                                                                      View Itinerary
+                                                                  </button>
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  ))
+                                              )}
+                                          </div>
+                                      )}
+
+                                      {/* Confirmed Sub-tab */}
+                                      {scheduledSubTab === "confirmed" && (
+                                          <div className="space-y-4">
+                                              {confirmedBookings.length === 0 ? (
+                                                  <div className="text-center py-12">
+                                                      <CalendarCheck className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                                                      <p className="text-stone-500">No confirmed bookings</p>
+                                                      <p className="text-stone-400 text-sm mt-1">
+                                                          Paid bookings ready for their scheduled date will appear here
+                                                      </p>
+                                                  </div>
+                                              ) : (
+                                                  confirmedBookings.map((booking) => (
+                                                      <div key={booking._id} className="border border-sage-200 rounded-xl p-5 bg-sage-50/30 hover:shadow-md transition-shadow">
+                                                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                              <div className="flex-1">
+                                                                  <div className="flex items-center gap-2 mb-2">
+                                                                      <MapPin className="w-4 h-4 text-sage-600" />
+                                                                      <h3 className="font-serif font-semibold text-stone-800">
+                                                                          {booking.tripDetails?.title}
+                                                                      </h3>
+                                                                      <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
+                                                                          Confirmed
+                                                                      </span>
+                                                                  </div>
+                                                                  <div className="space-y-2 text-sm text-stone-600">
+                                                                      <div className="flex items-center gap-2">
+                                                                          <User className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.touristId?.fullName}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2">
+                                                                          <Mail className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.touristId?.email}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2">
+                                                                          <Phone className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.touristId?.phoneNumber}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2 font-medium text-sage-700">
+                                                                          <Calendar className="w-4 h-4 text-sage-600" />
+                                                                          <span>Scheduled: {formatDate(booking.tripDetails?.preferredDate)}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2 font-medium text-sage-700">
+                                                                          <Clock className="w-4 h-4 text-sage-600" />
+                                                                          <span>Time: {formatTime(booking.tripDetails?.preferredDate)}</span>
+                                                                      </div>
+                                                                      <div className="flex items-center gap-2">
+                                                                          <Users className="w-4 h-4 text-stone-400" />
+                                                                          <span>{booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}</span>
+                                                                      </div>
+                                                                      {booking.tripDetails?.meetingPoint && (
+                                                                          <div className="flex items-center gap-2">
+                                                                              <MapPin className="w-4 h-4 text-stone-400" />
+                                                                              <span>Meeting: {booking.tripDetails.meetingPoint}</span>
+                                                                          </div>
+                                                                      )}
+                                                                      {booking.tripDetails?.priorityAssistance?.length > 0 && (
+                                                                          <div className="flex flex-wrap gap-2 mt-2">
+                                                                              {booking.tripDetails.priorityAssistance.map(priority => {
+                                                                                  const config = PRIORITY_LABELS[priority];
+                                                                                  if (!config) return null;
+                                                                                  const Icon = config.icon;
+                                                                                  return (
+                                                                                      <span key={priority} className="inline-flex items-center gap-1 px-2 py-1 bg-terracotta-50 text-terracotta-700 text-xs rounded-full">
+                                                                                          <Icon className="w-3 h-3" />
+                                                                                          {config.label}
+                                                                                      </span>
+                                                                                  );
+                                                                              })}
+                                                                          </div>
+                                                                      )}
+                                                                  </div>
+                                                              </div>
+                                                              <div className="flex flex-col gap-2">
+                                                                  <button
+                                                                      onClick={() => openItineraryModal(booking)}
+                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors w-full"
+                                                                  >
+                                                                      <Eye className="w-4 h-4" />
+                                                                      View Itinerary
+                                                                  </button>
+                                                                  <button
+                                                                      onClick={() => openStartTripModal(booking._id)}
+                                                                      disabled={actionLoading === booking._id}
+                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                                  >
+                                                                      {actionLoading === booking._id ? (
+                                                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                                                      ) : (
+                                                                          <>
+                                                                              <Play className="w-4 h-4" />
+                                                                              Start Trip
+                                                                          </>
+                                                                      )}
+                                                                  </button>
+                                                                  <button
+                                                                      onClick={() => openCompleteModal(booking._id)}
+                                                                      disabled={actionLoading === booking._id}
+                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-600 hover:bg-stone-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                                  >
+                                                                      <CheckCircle className="w-4 h-4" />
+                                                                      Mark Complete
+                                                                  </button>
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  ))
+                                              )}
+                                          </div>
                                       )}
                                   </div>
                               )}
@@ -967,6 +1255,22 @@ const GuideDashboard = () => {
               cancelText="Cancel"
               loading={completeLoading}
               icon={CheckCircle}
+          />
+
+          {/* Start Trip Confirmation Modal */}
+          <ConfirmationModal
+              isOpen={startTripModalOpen}
+              onClose={() => {
+                  setStartTripModalOpen(false);
+                  setStartTripBookingId(null);
+              }}
+              onConfirm={handleStartTrip}
+              title="Start Trip"
+              message="Are you sure you want to start this trip? This will mark the booking as active and notify the tourist."
+              confirmText="Yes, Start Trip"
+              cancelText="Cancel"
+              loading={startTripLoading}
+              icon={Play}
           />
       </div>
   );

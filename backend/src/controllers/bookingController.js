@@ -128,7 +128,7 @@ export const getMyAcceptedBookings = async (req, res) => {
         
         const acceptedBookings = await Booking.find({ 
             guideId, 
-            status: { $in: ["accepted", "awaiting_payment", "paid"] } 
+            status: { $in: ["accepted", "awaiting_payment", "active"] } 
         })
             .populate("touristId", "fullName email phoneNumber")
             .populate("itineraryId")
@@ -139,6 +139,71 @@ export const getMyAcceptedBookings = async (req, res) => {
     } catch (error) {
         console.error("Get accepted bookings error:", error);
         res.status(500).json({ message: "Server error fetching bookings" });
+    }
+};
+
+// @desc    Get guide's scheduled bookings (Guide only) - includes awaiting_payment and scheduled
+// @route   GET /api/bookings/my-scheduled
+export const getMyScheduledBookings = async (req, res) => {
+    try {
+        const guideId = req.user._id;
+        
+        const scheduledBookings = await Booking.find({ 
+            guideId, 
+            status: { $in: ["awaiting_payment", "scheduled"] }
+        })
+            .populate("touristId", "fullName email phoneNumber")
+            .populate("itineraryId")
+            .sort({ "tripDetails.preferredDate": 1 }); // Sort by scheduled date ascending
+
+        res.json(scheduledBookings);
+        
+    } catch (error) {
+        console.error("Get scheduled bookings error:", error);
+        res.status(500).json({ message: "Server error fetching scheduled bookings" });
+    }
+};
+
+// @desc    Start a scheduled trip (Guide only) - For demonstration purposes
+// @route   PUT /api/bookings/:id/start
+export const startTrip = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const guideId = req.user._id;
+
+        const booking = await Booking.findById(id);
+        
+        if (!booking) {
+            return res.status(404).json({ message: "Booking not found" });
+        }
+
+        if (booking.status !== "scheduled") {
+            return res.status(400).json({ message: "Only scheduled bookings can be started" });
+        }
+
+        if (booking.guideId.toString() !== guideId.toString()) {
+            return res.status(403).json({ message: "You can only start your own bookings" });
+        }
+
+        booking.status = "active";
+        booking.startedAt = new Date();
+        await booking.save();
+
+        const updatedBooking = await Booking.findById(id)
+            .populate("touristId", "fullName email phoneNumber")
+            .populate("itineraryId");
+
+        // Emit socket event to notify the tourist
+        emitToUser(booking.touristId.toString(), "booking-started", updatedBooking);
+
+        res.json({
+            message: "Trip started successfully",
+            booking: updatedBooking,
+        });
+
+    } catch (error) {
+        console.error("Start trip error:", error);
+        res.status(500).json({ message: "Server error starting trip" });
     }
 };
 
@@ -294,8 +359,8 @@ export const completeBooking = async (req, res) => {
             return res.status(404).json({ message: "Booking not found" });
         }
 
-        if (!["accepted", "paid"].includes(booking.status)) {
-            return res.status(400).json({ message: "Only accepted or paid bookings can be completed" });
+        if (!["accepted", "active", "scheduled"].includes(booking.status)) {
+            return res.status(400).json({ message: "Only active or scheduled bookings can be completed" });
         }
 
         if (booking.guideId.toString() !== guideId.toString()) {

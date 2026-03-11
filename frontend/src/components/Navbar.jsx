@@ -80,8 +80,8 @@ const Navbar = () => {
       <div className="mx-auto max-w-6xl px-4 py-4">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group"> 
-            <MapPin className="w-6 h-6 text-terracotta-600" />
-            <span className="text-2xl font-serif font-semibold text-stone-800 tracking-tight group-hover:text-terracotta-600 transition-colors">
+            <img src="/favicon_v3.png" alt="Lakbay Intramuros Logo" className="w-8 h-8 sm:w-10 sm:h-10" />
+            <span className="text-xl sm:text-2xl font-serif font-semibold text-stone-800 tracking-tight group-hover:text-terracotta-600 transition-colors">
               Lakbay Intramuros
             </span>
           </Link>
@@ -293,13 +293,13 @@ const Navbar = () => {
               <>
                 <Link 
                   to="/login" 
-                  className="px-4 py-2 text-sm font-medium text-stone-700 hover:text-stone-900 transition-colors"
+                  className="px-3 py-2 text-xs sm:text-sm font-medium text-stone-700 hover:text-stone-900 transition-colors"
                 >
                   Sign in
                 </Link>
                 <Link 
                   to="/signup" 
-                  className="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white text-sm font-medium rounded-lg transition-colors"
+                  className="px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs sm:text-sm font-medium rounded-lg transition-colors"
                 >
                   Sign up
                 </Link>

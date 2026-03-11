@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .env
+
+
+# Personal Files
+lakbay_intramuros_features.md*

@@ -1,8 +1,8 @@
 // Intramuros Locations Database with Categories
 // Used for the Smart Generate feature and map markers
 
-const path = 'assets/locations/'; //global variable for path to the images
-const iconPath = 'assets/poi-icons/'
+const path = '/assets/locations/'; //global variable for path to the images
+const iconPath = '/assets/poi-icons/'
 //Note: use backticks(``) instead of apostraphes
 
 export const LOCATION_CATEGORIES = {

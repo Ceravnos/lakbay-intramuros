@@ -3,6 +3,7 @@ import {
   X, MapPin, Clock, Users, Calendar, Navigation, 
   Send, Loader2, Plus, Trash2, GripVertical, Search
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { INTRAMUROS_LOCATIONS } from '../data/locations';
 
 const ItineraryEditModal = ({
@@ -46,6 +47,11 @@ const ItineraryEditModal = ({
   });
 
   const addLocation = (landmark) => {
+    if (locations.length >= 10) {
+      toast.error('Maximum of 10 stops allowed');
+      return;
+    }
+
     const isAlreadyAdded = locations.find(loc => loc.placeId === landmark.placeId);
     if (isAlreadyAdded) return;
 

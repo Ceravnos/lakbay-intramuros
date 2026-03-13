@@ -20,7 +20,6 @@ const GuideDashboard = () => {
   const [activeTab, setActiveTab] = useState("pending");
   const [scheduledSubTab, setScheduledSubTab] = useState("pending_payment");
   const [pendingBookings, setPendingBookings] = useState([]);
-  const [acceptedBookings, setAcceptedBookings] = useState([]);
   const [scheduledBookings, setScheduledBookings] = useState([]);
   const [completedBookings, setCompletedBookings] = useState([]);
   const [rejectedBookings, setRejectedBookings] = useState([]);
@@ -29,7 +28,7 @@ const GuideDashboard = () => {
   const [error, setError] = useState(null);
   
   // Availability management state
-  const [unavailableDates, setUnavailableDates] = useState([]);
+  const [unavailableDates, setUnavailableDates] = useState(user?.unavailableDates || []);
   const [selectedDates, setSelectedDates] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -68,24 +67,25 @@ const GuideDashboard = () => {
   
   const navigate = useNavigate();
 
-  const fetchBookings = async () => {
-      setLoading(true);
-      setError(null);
+  const fetchBookings = useCallback(async (options = {}) => {
+      const { background = false } = options;
+      if (!background) {
+          setLoading(true);
+          setError(null);
+      }
       try {
-          const [pendingRes, acceptedRes, scheduledRes, historyRes, rejectedRes] = await Promise.all([
-              api.get("/bookings/pending"),
-              api.get("/bookings/my-accepted"),
-              api.get("/bookings/my-scheduled"),
-              api.get("/bookings/history"),
-              api.get("/bookings/my-rejected"),
-          ]);
-          setPendingBookings(pendingRes.data);
-          setAcceptedBookings(acceptedRes.data);
-          setScheduledBookings(scheduledRes.data);
-          setCompletedBookings(historyRes.data.completedBookings || []);
-          setRejectedBookings(rejectedRes.data);
+          const res = await api.get("/bookings/guide-dashboard");
+          setPendingBookings(res.data.pendingBookings || []);
+          setScheduledBookings(res.data.scheduledBookings || []);
+          setCompletedBookings(res.data.completedBookings || []);
+          setRejectedBookings(res.data.rejectedBookings || []);
+          setUnavailableDates(res.data.unavailableDates || []);
+          setError(null);
       } catch (err) {
           console.error(err);
+          if (background) {
+              return;
+          }
           const errorMessage = err.response?.data?.message || "Failed to fetch bookings";
           setError(errorMessage);
           
@@ -100,14 +100,19 @@ const GuideDashboard = () => {
               toast.error(errorMessage);
           }
       } finally {
-          setLoading(false);
+          if (!background) {
+              setLoading(false);
+          }
       }
-  };
+  }, [refreshUser]);
 
   useEffect(() => {
       fetchBookings();
-      fetchUnavailableDates();
-  }, []);
+  }, [fetchBookings]);
+
+  useEffect(() => {
+      setUnavailableDates(user?.unavailableDates || []);
+  }, [user?.unavailableDates]);
 
   // Listen for real-time booking updates via WebSocket
   useEffect(() => {
@@ -115,7 +120,7 @@ const GuideDashboard = () => {
           const { type } = event.detail;
           // Refresh bookings on any booking update
           if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted' || type === 'payment-paid' || type === 'started') {
-              fetchBookings();
+              fetchBookings({ background: true });
           }
       };
 
@@ -123,16 +128,7 @@ const GuideDashboard = () => {
       return () => {
           window.removeEventListener('booking-update', handleBookingUpdate);
       };
-  }, []);
-
-  const fetchUnavailableDates = async () => {
-      try {
-          const res = await api.get('/auth/me');
-          setUnavailableDates(res.data.unavailableDates || []);
-      } catch (err) {
-          console.error('Failed to fetch unavailable dates:', err);
-      }
-  };
+  }, [fetchBookings]);
 
   // Toggle date selection (local state only)
   const handleToggleDateSelection = (dateStr) => {
@@ -265,8 +261,7 @@ const GuideDashboard = () => {
       try {
           await api.put(`/bookings/${bookingId}/accept`);
           toast.success("Booking accepted!");
-          fetchBookings();
-          await refreshUser();
+          fetchBookings({ background: true });
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to accept booking");
       } finally {
@@ -288,8 +283,7 @@ const GuideDashboard = () => {
           toast.success("Booking rejected!");
           setRejectModalOpen(false);
           setRejectBookingId(null);
-          fetchBookings();
-          await refreshUser();
+          fetchBookings({ background: true });
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to reject booking");
       } finally {
@@ -319,7 +313,7 @@ const GuideDashboard = () => {
           setEditBooking(null);
           setItineraryModalOpen(false);
           setSelectedBooking(null);
-          fetchBookings();
+          fetchBookings({ background: true });
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to send revision request");
       } finally {
@@ -341,8 +335,7 @@ const GuideDashboard = () => {
           toast.success("Tour marked as complete!");
           setCompleteModalOpen(false);
           setCompleteBookingId(null);
-          fetchBookings();
-          await refreshUser();
+          fetchBookings({ background: true });
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to complete booking");
       } finally {
@@ -364,7 +357,7 @@ const GuideDashboard = () => {
           toast.success("Trip started successfully!");
           setStartTripModalOpen(false);
           setStartTripBookingId(null);
-          fetchBookings();
+          fetchBookings({ background: true });
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to start trip");
       } finally {
@@ -390,15 +383,27 @@ const GuideDashboard = () => {
       })
   };
 
-  const pendingPaymentBookings = scheduledBookings.filter(b => b.status === "awaiting_payment");
-  const confirmedBookings = scheduledBookings.filter(b => b.status === "scheduled");
+  const pendingPaymentBookings = useMemo(
+      () => scheduledBookings.filter(b => b.status === "awaiting_payment"),
+      [scheduledBookings]
+  );
+  const confirmedBookings = useMemo(
+      () => scheduledBookings.filter(b => b.status === "scheduled"),
+      [scheduledBookings]
+  );
+  const historyBookings = useMemo(
+      () => [
+          ...completedBookings.map(b => ({ ...b, displayStatus: "completed" })),
+          ...rejectedBookings.map(b => ({ ...b, displayStatus: "rejected" }))
+      ].sort((a, b) => new Date(b.completedAt || b.rejectedAt) - new Date(a.completedAt || a.rejectedAt)),
+      [completedBookings, rejectedBookings]
+  );
 
   const stats = {
       pending: pendingBookings.length,
       scheduled: scheduledBookings.length,
       pendingPayment: pendingPaymentBookings.length,
       confirmed: confirmedBookings.length,
-      active: acceptedBookings.length,
       completed: completedBookings.length,
       rejected: rejectedBookings.length,
   };
@@ -408,113 +413,23 @@ const GuideDashboard = () => {
           <Navbar />
 
           <main className="max-w-6xl mx-auto px-4 py-8">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                  <div className="bg-white rounded-xl border border-stone-200 p-5">
-                      <div className="flex items-center justify-between">
-                          <div>
-                              <p className="text-stone-500 text-sm">Pending Requests</p>
-                              <p className="text-3xl font-semibold text-sand-600 mt-1">{stats.pending}</p>
-                          </div>
-                          <div className="w-12 h-12 bg-sand-50 rounded-xl flex items-center justify-center">
-                              <Clock className="w-6 h-6 text-sand-500" />
-                          </div>
-                      </div>
+              {/* Stats Cards - Minimalist */}
+              <div className="grid grid-cols-4 gap-3 mb-8">
+                  <div className="bg-white rounded-xl border border-stone-200 p-4 text-center">
+                      <p className="text-2xl font-semibold text-stone-800">{stats.pending}</p>
+                      <p className="text-stone-500 text-xs mt-1">Pending</p>
                   </div>
-                  <div className={`bg-white rounded-xl border ${acceptedBookings.length > 0 ? 'border-sage-300 bg-sage-50/30' : 'border-stone-200'} p-5`}>
-                      <div className="flex items-center justify-between">
-                          <div>
-                              <p className="text-stone-500 text-sm">Active Tour</p>
-                              {acceptedBookings.length > 0 ? (
-                                  <p className="text-sm font-medium text-sage-600 mt-1">
-                                      {acceptedBookings[0].status === 'awaiting_payment' ? 'Awaiting Payment' 
-                                       : acceptedBookings[0].status === 'paid' ? 'Paid' 
-                                       : 'In Progress'}
-                                  </p>
-                              ) : (
-                                  <p className="text-sm text-stone-400 mt-1">No active tour</p>
-                              )}
-                          </div>
-                          <div className="w-12 h-12 bg-sage-50 rounded-xl flex items-center justify-center">
-                              <Users className="w-6 h-6 text-sage-500" />
-                          </div>
-                      </div>
-                      {/* Show current active tour details */}
-                      {acceptedBookings.length > 0 ? (
-                          <div className="mt-4 pt-4 border-t border-sage-200">
-                              <div className="flex items-center gap-2 mb-2">
-                                  <MapPin className="w-4 h-4 text-sage-600" />
-                                  <span className="font-medium text-stone-800 text-sm">
-                                      {acceptedBookings[0].tripDetails?.title}
-                                  </span>
-                              </div>
-                              <div className="space-y-1 text-xs text-stone-600">
-                                  <div className="flex items-center gap-2">
-                                      <User className="w-3 h-3 text-stone-400" />
-                                      <span>{acceptedBookings[0].touristId?.fullName}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                      <Calendar className="w-3 h-3 text-stone-400" />
-                                      <span>{formatDate(acceptedBookings[0].tripDetails?.preferredDate)}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                      <Clock className="w-3 h-3 text-stone-400" />
-                                      <span>{formatTime(acceptedBookings[0].tripDetails?.preferredDate)}</span>
-                                  </div>
-                              </div>
-                              {acceptedBookings[0].status === 'awaiting_payment' && (
-                                  <p className="mt-3 text-center text-xs text-amber-600 font-medium">
-                                      Waiting for tourist payment...
-                                  </p>
-                              )}
-                              {acceptedBookings[0].status === 'paid' && (
-                                  <button
-                                      onClick={() => openCompleteModal(acceptedBookings[0]._id)}
-                                      disabled={completeLoading}
-                                      className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                                  >
-                                      <CheckCircle className="w-3 h-3" />
-                                      Mark Complete
-                                  </button>
-                              )}
-                              {acceptedBookings[0].status === 'accepted' && (
-                                  <button
-                                      onClick={() => openCompleteModal(acceptedBookings[0]._id)}
-                                      disabled={completeLoading}
-                                      className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                                  >
-                                      <CheckCircle className="w-3 h-3" />
-                                      Mark Complete
-                                  </button>
-                              )}
-                          </div>
-                      ) : (
-                          <div className="mt-4 pt-4 border-t border-stone-100 text-center">
-                              <p className="text-xs text-stone-400">You have no active tours</p>
-                          </div>
-                      )}
+                  <div className="bg-white rounded-xl border border-stone-200 p-4 text-center">
+                      <p className="text-2xl font-semibold text-stone-800">{stats.scheduled}</p>
+                      <p className="text-stone-500 text-xs mt-1">Scheduled</p>
                   </div>
-                  <div className="bg-white rounded-xl border border-stone-200 p-5">
-                      <div className="flex items-center justify-between">
-                          <div>
-                              <p className="text-stone-500 text-sm">Completed</p>
-                              <p className="text-3xl font-semibold text-stone-700 mt-1">{stats.completed}</p>
-                          </div>
-                          <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center">
-                              <CheckCircle className="w-6 h-6 text-stone-500" />
-                          </div>
-                      </div>
+                  <div className="bg-white rounded-xl border border-stone-200 p-4 text-center">
+                      <p className="text-2xl font-semibold text-stone-800">{stats.completed}</p>
+                      <p className="text-stone-500 text-xs mt-1">Completed</p>
                   </div>
-                  <div className="bg-white rounded-xl border border-stone-200 p-5">
-                      <div className="flex items-center justify-between">
-                          <div>
-                              <p className="text-stone-500 text-sm">Rejected</p>
-                              <p className="text-3xl font-semibold text-stone-700 mt-1">{stats.rejected}</p>
-                          </div>
-                          <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center">
-                              <XCircle className="w-6 h-6 text-stone-500" />
-                          </div>
-                      </div>
+                  <div className="bg-white rounded-xl border border-stone-200 p-4 text-center">
+                      <p className="text-2xl font-semibold text-stone-800">{stats.rejected}</p>
+                      <p className="text-stone-500 text-xs mt-1">Rejected</p>
                   </div>
               </div>
 
@@ -579,18 +494,6 @@ const GuideDashboard = () => {
 
                   {/* Tab Content */}
                   <div className="p-6">
-                      {/* Refresh Button */}
-                      <div className="flex justify-end mb-4">
-                          <button
-                              onClick={fetchBookings}
-                              disabled={loading}
-                              className="flex items-center gap-2 px-3 py-1.5 text-stone-500 hover:text-stone-700 text-sm transition-colors"
-                          >
-                              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                              Refresh
-                          </button>
-                      </div>
-
                       {/* Error State with Retry */}
                       {error && !loading && (
                           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -630,80 +533,50 @@ const GuideDashboard = () => {
                                           </div>
                                       ) : (
                                           pendingBookings.map((booking) => (
-                                              <div key={booking._id} className="border border-stone-200 rounded-xl p-5 hover:shadow-md transition-shadow">
-                                                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                      <div className="flex-1">
-                                                          <div className="flex items-center gap-2 mb-2">
-                                                              <MapPin className="w-4 h-4 text-terracotta-500" />
-                                                              <h3 className="font-serif font-semibold text-stone-800">
+                                              <div key={booking._id} className="border border-stone-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                                                  <div className="flex items-center justify-between gap-4">
+                                                      <div className="flex-1 min-w-0">
+                                                          <div className="flex items-center gap-2 mb-1">
+                                                              <h3 className="font-serif font-semibold text-stone-800 truncate">
                                                                   {booking.tripDetails?.title}
                                                               </h3>
-                                                          </div>
-                                                          <div className="space-y-2 text-sm text-stone-600">
-                                                              <div className="flex items-center gap-2">
-                                                                  <User className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.touristId?.fullName}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Mail className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.touristId?.email}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Phone className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.touristId?.phoneNumber}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Calendar className="w-4 h-4 text-stone-400" />
-                                                                  <span>{formatDate(booking.tripDetails?.preferredDate)}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Clock className="w-4 h-4 text-stone-400" />
-                                                                  <span>{formatTime(booking.tripDetails?.preferredDate)}</span>
-                                                              </div>
-                                                              <div className="flex items-center gap-2">
-                                                                  <Users className="w-4 h-4 text-stone-400" />
-                                                                  <span>{booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}</span>
-                                                              </div>
-                                                              {booking.tripDetails?.meetingPoint && (
-                                                                  <div className="flex items-center gap-2">
-                                                                      <MapPin className="w-4 h-4 text-stone-400" />
-                                                                      <span>Meeting: {booking.tripDetails.meetingPoint}</span>
-                                                                  </div>
-                                                              )}
                                                               {booking.tripDetails?.priorityAssistance?.length > 0 && (
-                                                                  <div className="flex flex-wrap gap-2 mt-2">
-                                                                      {booking.tripDetails.priorityAssistance.map(priority => {
-                                                                          const config = PRIORITY_LABELS[priority];
-                                                                          if (!config) return null;
-                                                                          const Icon = config.icon;
-                                                                          return (
-                                                                              <span key={priority} className="inline-flex items-center gap-1 px-2 py-1 bg-terracotta-50 text-terracotta-700 text-xs rounded-full">
-                                                                                  <Icon className="w-3 h-3" />
-                                                                                  {config.label}
-                                                                              </span>
-                                                                          );
-                                                                      })}
-                                                                  </div>
+                                                                  <span className="px-1.5 py-0.5 bg-terracotta-100 text-terracotta-700 text-xs rounded">
+                                                                      Priority
+                                                                  </span>
                                                               )}
-                                                              {booking.tripDetails?.notes && (
-                                                                  <p className="text-stone-500 italic mt-2 pl-6">
-                                                                      "{booking.tripDetails.notes}"
-                                                                  </p>
-                                                              )}
+                                                          </div>
+                                                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-600">
+                                                              <span className="flex items-center gap-1">
+                                                                  <User className="w-3.5 h-3.5 text-stone-400" />
+                                                                  {booking.touristId?.fullName}
+                                                              </span>
+                                                              <span className="flex items-center gap-1">
+                                                                  <Calendar className="w-3.5 h-3.5 text-stone-400" />
+                                                                  {formatDate(booking.tripDetails?.preferredDate)}
+                                                              </span>
+                                                              <span className="flex items-center gap-1">
+                                                                  <Clock className="w-3.5 h-3.5 text-stone-400" />
+                                                                  {booking.timeSlot === 'AM' ? 'Morning' : 'Afternoon'}
+                                                              </span>
+                                                              <span className="flex items-center gap-1">
+                                                                  <Users className="w-3.5 h-3.5 text-stone-400" />
+                                                                  {booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}
+                                                              </span>
                                                           </div>
                                                       </div>
-                                                      <div className="flex flex-col gap-2">
+                                                      <div className="flex items-center gap-2 flex-shrink-0">
                                                           <button
                                                               onClick={() => openItineraryModal(booking)}
-                                                              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors w-full"
+                                                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-sm font-medium rounded-lg transition-colors"
                                                           >
                                                               <Eye className="w-4 h-4" />
-                                                              View Itinerary
+                                                              Details
                                                           </button>
                                                           <button
                                                               onClick={() => handleAccept(booking._id)}
                                                               disabled={actionLoading === booking._id}
-                                                              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-sage-600 hover:bg-sage-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                                                           >
                                                               {actionLoading === booking._id ? (
                                                                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -714,11 +587,10 @@ const GuideDashboard = () => {
                                                                   </>
                                                               )}
                                                           </button>
-
                                                           <button
                                                               onClick={() => openRejectModal(booking._id)}
                                                               disabled={actionLoading === booking._id}
-                                                              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                                                           >
                                                               {actionLoading === booking._id ? (
                                                                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -789,64 +661,37 @@ const GuideDashboard = () => {
                                                   </div>
                                               ) : (
                                                   pendingPaymentBookings.map((booking) => (
-                                                      <div key={booking._id} className="border border-amber-200 rounded-xl p-5 bg-amber-50/30 hover:shadow-md transition-shadow">
-                                                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                              <div className="flex-1">
-                                                                  <div className="flex items-center gap-2 mb-2">
-                                                                      <MapPin className="w-4 h-4 text-amber-600" />
-                                                                      <h3 className="font-serif font-semibold text-stone-800">
+                                                      <div key={booking._id} className="border border-amber-200 rounded-xl p-4 bg-amber-50/30 hover:shadow-md transition-shadow">
+                                                          <div className="flex items-center justify-between gap-4">
+                                                              <div className="flex-1 min-w-0">
+                                                                  <div className="flex items-center gap-2 mb-1">
+                                                                      <h3 className="font-serif font-semibold text-stone-800 truncate">
                                                                           {booking.tripDetails?.title}
                                                                       </h3>
-                                                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
-                                                                          Awaiting Payment
+                                                                  </div>
+                                                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-600">
+                                                                      <span className="flex items-center gap-1">
+                                                                          <User className="w-3.5 h-3.5 text-stone-400" />
+                                                                          {booking.touristId?.fullName}
+                                                                      </span>
+                                                                      <span className="flex items-center gap-1 text-amber-700 font-medium">
+                                                                          <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                                                                          {formatDate(booking.tripDetails?.preferredDate)}
+                                                                      </span>
+                                                                      <span className="flex items-center gap-1 text-amber-700 font-medium">
+                                                                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                                                          {booking.timeSlot === 'AM' ? 'Morning' : 'Afternoon'}
+                                                                      </span>
+                                                                      <span className="flex items-center gap-1">
+                                                                          <Users className="w-3.5 h-3.5 text-stone-400" />
+                                                                          {booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}
                                                                       </span>
                                                                   </div>
-                                                                  <div className="space-y-2 text-sm text-stone-600">
-                                                                      <div className="flex items-center gap-2">
-                                                                          <User className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.touristId?.fullName}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2">
-                                                                          <Mail className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.touristId?.email}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2">
-                                                                          <Phone className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.touristId?.phoneNumber}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2 font-medium text-amber-700">
-                                                                          <Calendar className="w-4 h-4 text-amber-600" />
-                                                                          <span>Scheduled: {formatDate(booking.tripDetails?.preferredDate)}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2 font-medium text-amber-700">
-                                                                          <Clock className="w-4 h-4 text-amber-600" />
-                                                                          <span>Time: {formatTime(booking.tripDetails?.preferredDate)}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2">
-                                                                          <Users className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}</span>
-                                                                      </div>
-                                                                      {booking.tripDetails?.priorityAssistance?.length > 0 && (
-                                                                          <div className="flex flex-wrap gap-2 mt-2">
-                                                                              {booking.tripDetails.priorityAssistance.map(priority => {
-                                                                                  const config = PRIORITY_LABELS[priority];
-                                                                                  if (!config) return null;
-                                                                                  const Icon = config.icon;
-                                                                                  return (
-                                                                                      <span key={priority} className="inline-flex items-center gap-1 px-2 py-1 bg-terracotta-50 text-terracotta-700 text-xs rounded-full">
-                                                                                          <Icon className="w-3 h-3" />
-                                                                                          {config.label}
-                                                                                      </span>
-                                                                                  );
-                                                                              })}
-                                                                          </div>
-                                                                      )}
-                                                                  </div>
                                                               </div>
-                                                              <div className="flex flex-col gap-2">
+                                                              <div className="flex items-center gap-2 flex-shrink-0">
                                                                   <button
                                                                       onClick={() => openItineraryModal(booking)}
-                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors w-full"
+                                                                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-sm font-medium rounded-lg transition-colors"
                                                                   >
                                                                       <Eye className="w-4 h-4" />
                                                                       View Itinerary
@@ -872,95 +717,62 @@ const GuideDashboard = () => {
                                                   </div>
                                               ) : (
                                                   confirmedBookings.map((booking) => (
-                                                      <div key={booking._id} className="border border-sage-200 rounded-xl p-5 bg-sage-50/30 hover:shadow-md transition-shadow">
-                                                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                              <div className="flex-1">
-                                                                  <div className="flex items-center gap-2 mb-2">
-                                                                      <MapPin className="w-4 h-4 text-sage-600" />
-                                                                      <h3 className="font-serif font-semibold text-stone-800">
+                                                      <div key={booking._id} className="border border-sage-200 rounded-xl p-4 bg-sage-50/30 hover:shadow-md transition-shadow">
+                                                          <div className="flex items-center justify-between gap-4">
+                                                              <div className="flex-1 min-w-0">
+                                                                  <div className="flex items-center gap-2 mb-1">
+                                                                      <h3 className="font-serif font-semibold text-stone-800 truncate">
                                                                           {booking.tripDetails?.title}
                                                                       </h3>
-                                                                      <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
-                                                                          Confirmed
+                                                                  </div>
+                                                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-600">
+                                                                      <span className="flex items-center gap-1">
+                                                                          <User className="w-3.5 h-3.5 text-stone-400" />
+                                                                          {booking.touristId?.fullName}
+                                                                      </span>
+                                                                      <span className="flex items-center gap-1 text-sage-700 font-medium">
+                                                                          <Calendar className="w-3.5 h-3.5 text-sage-600" />
+                                                                          {formatDate(booking.tripDetails?.preferredDate)}
+                                                                      </span>
+                                                                      <span className="flex items-center gap-1 text-sage-700 font-medium">
+                                                                          <Clock className="w-3.5 h-3.5 text-sage-600" />
+                                                                          {booking.timeSlot === 'AM' ? 'Morning' : 'Afternoon'}
+                                                                      </span>
+                                                                      <span className="flex items-center gap-1">
+                                                                          <Users className="w-3.5 h-3.5 text-stone-400" />
+                                                                          {booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}
                                                                       </span>
                                                                   </div>
-                                                                  <div className="space-y-2 text-sm text-stone-600">
-                                                                      <div className="flex items-center gap-2">
-                                                                          <User className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.touristId?.fullName}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2">
-                                                                          <Mail className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.touristId?.email}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2">
-                                                                          <Phone className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.touristId?.phoneNumber}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2 font-medium text-sage-700">
-                                                                          <Calendar className="w-4 h-4 text-sage-600" />
-                                                                          <span>Scheduled: {formatDate(booking.tripDetails?.preferredDate)}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2 font-medium text-sage-700">
-                                                                          <Clock className="w-4 h-4 text-sage-600" />
-                                                                          <span>Time: {formatTime(booking.tripDetails?.preferredDate)}</span>
-                                                                      </div>
-                                                                      <div className="flex items-center gap-2">
-                                                                          <Users className="w-4 h-4 text-stone-400" />
-                                                                          <span>{booking.tripDetails?.numberOfPeople} {booking.tripDetails?.numberOfPeople === 1 ? 'person' : 'people'}</span>
-                                                                      </div>
-                                                                      {booking.tripDetails?.meetingPoint && (
-                                                                          <div className="flex items-center gap-2">
-                                                                              <MapPin className="w-4 h-4 text-stone-400" />
-                                                                              <span>Meeting: {booking.tripDetails.meetingPoint}</span>
-                                                                          </div>
-                                                                      )}
-                                                                      {booking.tripDetails?.priorityAssistance?.length > 0 && (
-                                                                          <div className="flex flex-wrap gap-2 mt-2">
-                                                                              {booking.tripDetails.priorityAssistance.map(priority => {
-                                                                                  const config = PRIORITY_LABELS[priority];
-                                                                                  if (!config) return null;
-                                                                                  const Icon = config.icon;
-                                                                                  return (
-                                                                                      <span key={priority} className="inline-flex items-center gap-1 px-2 py-1 bg-terracotta-50 text-terracotta-700 text-xs rounded-full">
-                                                                                          <Icon className="w-3 h-3" />
-                                                                                          {config.label}
-                                                                                      </span>
-                                                                                  );
-                                                                              })}
-                                                                          </div>
-                                                                      )}
-                                                                  </div>
                                                               </div>
-                                                              <div className="flex flex-col gap-2">
+                                                              <div className="flex items-center gap-2 flex-shrink-0">
                                                                   <button
                                                                       onClick={() => openItineraryModal(booking)}
-                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium rounded-lg transition-colors w-full"
+                                                                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-sm font-medium rounded-lg transition-colors"
                                                                   >
                                                                       <Eye className="w-4 h-4" />
-                                                                      View Itinerary
+                                                                      Details
                                                                   </button>
                                                                   <button
                                                                       onClick={() => openStartTripModal(booking._id)}
                                                                       disabled={actionLoading === booking._id}
-                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-sage-600 hover:bg-sage-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                                                                   >
                                                                       {actionLoading === booking._id ? (
                                                                           <Loader2 className="w-4 h-4 animate-spin" />
                                                                       ) : (
                                                                           <>
                                                                               <Play className="w-4 h-4" />
-                                                                              Start Trip
+                                                                              Start
                                                                           </>
                                                                       )}
                                                                   </button>
                                                                   <button
                                                                       onClick={() => openCompleteModal(booking._id)}
                                                                       disabled={actionLoading === booking._id}
-                                                                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-stone-600 hover:bg-stone-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 w-full"
+                                                                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-stone-600 hover:bg-stone-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                                                                   >
                                                                       <CheckCircle className="w-4 h-4" />
-                                                                      Mark Complete
+                                                                      Complete
                                                                   </button>
                                                               </div>
                                                           </div>
@@ -996,12 +808,7 @@ const GuideDashboard = () => {
                                                       </tr>
                                                   </thead>
                                                   <tbody>
-                                                      {[
-                                                          ...completedBookings.map(b => ({ ...b, displayStatus: "completed" })),
-                                                          ...rejectedBookings.map(b => ({ ...b, displayStatus: "rejected" }))
-                                                      ]
-                                                      .sort((a, b) => new Date(b.completedAt || b.rejectedAt) - new Date(a.completedAt || a.rejectedAt))
-                                                      .map((booking) => (
+                                                      {historyBookings.map((booking) => (
                                                           <tr key={booking._id} className="border-b border-stone-100 hover:bg-stone-50">
                                                               <td className="py-3 px-4">
                                                                   <span className="font-medium text-stone-800">{booking.tripDetails?.title}</span>

@@ -32,6 +32,7 @@ const ItineraryBuilderPage = () => {
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [bookingRedirectLoading, setBookingRedirectLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -110,6 +111,40 @@ const ItineraryBuilderPage = () => {
             }
         } catch (error) {
             console.error('Failed to check ongoing tour:', error);
+        }
+    };
+
+    const handleBookGuide = async () => {
+        if (!itinerary.preferredDate) {
+            toast.error('Please select a date before booking a guide');
+            return;
+        }
+
+        setBookingRedirectLoading(true);
+
+        const bookingState = {
+            preferredDate: itinerary.preferredDate,
+            numberOfPeople: itinerary.numberOfPeople || 1,
+        };
+
+        try {
+            const selectedDate = itinerary.preferredDate.split('T')[0];
+            const guidesRes = await api.get(`/users/guides?date=${selectedDate}`);
+
+            navigate(`/book/${id}`, {
+                state: {
+                    ...bookingState,
+                    prefetchedGuides: guidesRes.data,
+                    prefetchedGuidesDate: selectedDate,
+                    prefetchedGuidesFetchedAt: Date.now(),
+                }
+            });
+        } catch (error) {
+            navigate(`/book/${id}`, {
+                state: bookingState,
+            });
+        } finally {
+            setBookingRedirectLoading(false);
         }
     };
 
@@ -712,24 +747,21 @@ const ItineraryBuilderPage = () => {
                     {itinerary.locations.length > 0 && id && !isReadOnly && (
                         <div className="p-4 border-t border-stone-200">
                             <button
-                                onClick={() => {
-                                    // Validate date is set before booking
-                                    if (!itinerary.preferredDate) {
-                                        toast.error('Please select a date before booking a guide');
-                                        return;
-                                    }
-                                    // Navigate with date and numberOfPeople pre-filled
-                                    navigate(`/book/${id}`, {
-                                        state: {
-                                            preferredDate: itinerary.preferredDate,
-                                            numberOfPeople: itinerary.numberOfPeople || 1
-                                        }
-                                    });
-                                }}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors"
+                                onClick={handleBookGuide}
+                                disabled={bookingRedirectLoading}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-lg transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                             >
-                                <Users className="w-4 h-4" />
-                                Book a Guide
+                                {bookingRedirectLoading ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Loading Guides...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Users className="w-4 h-4" />
+                                        Book a Guide
+                                    </>
+                                )}
                             </button>
                         </div>
                     )}

@@ -3,11 +3,17 @@ import User from "../models/User.js";
 import Itinerary from "../models/Itinerary.js";
 import { emitToGuide, emitToUser } from "../config/socket.js";
 
+const GUIDE_DASHBOARD_BOOKING_SELECT = "_id touristId itineraryId status timeSlot tripDetails completedAt rejectedAt createdAt";
+const GUIDE_DASHBOARD_POPULATE = [
+    { path: "touristId", select: "fullName email phoneNumber" },
+    { path: "itineraryId", select: "name locations preferredDate numberOfPeople" },
+];
+
 // @desc    Create a new booking request (Tourist only)
 // @route   POST /api/bookings
 export const createBooking = async (req, res) => {
     try {
-        const { itineraryId, guideId, tripDetails, preferredDate, numberOfPeople, notes } = req.body;
+        const { itineraryId, guideId, tripDetails, preferredDate, numberOfPeople, notes, timeSlot } = req.body;
         const touristId = req.user._id;
         const tourist = await User.findById(touristId);
 
@@ -15,6 +21,7 @@ export const createBooking = async (req, res) => {
         const bookingDate = tripDetails?.preferredDate || preferredDate;
         const bookingPeople = tripDetails?.numberOfPeople || numberOfPeople;
         const bookingNotes = tripDetails?.notes || notes;
+        const bookingTimeSlot = timeSlot || (tripDetails?.preferredDate ? (new Date(tripDetails.preferredDate).getHours() < 12 ? "AM" : "PM") : "AM");
 
         if (!itineraryId || !bookingDate) {
             return res.status(400).json({ message: "Itinerary ID and preferred date are required" });
@@ -41,6 +48,24 @@ export const createBooking = async (req, res) => {
                 return res.status(400).json({ message: "Selected user is not an approved guide" });
             }
 
+            // Check if guide already has a booking for this date and time slot
+            const bookingDateStart = new Date(bookingDate);
+            bookingDateStart.setHours(0, 0, 0, 0);
+            const bookingDateEnd = new Date(bookingDate);
+            bookingDateEnd.setHours(23, 59, 59, 999);
+
+            const existingGuideBooking = await Booking.findOne({
+                guideId,
+                timeSlot: bookingTimeSlot,
+                "tripDetails.preferredDate": { $gte: bookingDateStart, $lte: bookingDateEnd },
+                status: { $in: ["pending", "accepted", "awaiting_payment", "scheduled", "active"] },
+            });
+
+            if (existingGuideBooking) {
+                return res.status(409).json({ 
+                    message: `This guide is already booked for the ${bookingTimeSlot === "AM" ? "morning" : "afternoon"} slot on this date` 
+                });
+            }
         }
 
         // Check if tourist already has a pending booking for this itinerary
@@ -59,6 +84,7 @@ export const createBooking = async (req, res) => {
         const bookingData = {
             touristId,
             itineraryId,
+            timeSlot: bookingTimeSlot,
             tripDetails: {
                 title: tripDetails?.title || itinerary.name,
                 preferredDate: new Date(bookingDate),
@@ -161,6 +187,53 @@ export const getMyScheduledBookings = async (req, res) => {
     } catch (error) {
         console.error("Get scheduled bookings error:", error);
         res.status(500).json({ message: "Server error fetching scheduled bookings" });
+    }
+};
+
+export const getGuideDashboardData = async (req, res) => {
+    try {
+        const guideId = req.user._id;
+
+        const dashboardBookings = await Booking.find({
+            guideId,
+            status: { $in: ["pending", "awaiting_payment", "scheduled", "completed", "rejected"] },
+        })
+            .select(GUIDE_DASHBOARD_BOOKING_SELECT)
+            .populate(GUIDE_DASHBOARD_POPULATE)
+            .lean();
+
+        const pendingBookings = [];
+        const scheduledBookings = [];
+        const completedBookings = [];
+        const rejectedBookings = [];
+
+        dashboardBookings.forEach((booking) => {
+            if (booking.status === "pending") {
+                pendingBookings.push(booking);
+            } else if (booking.status === "awaiting_payment" || booking.status === "scheduled") {
+                scheduledBookings.push(booking);
+            } else if (booking.status === "completed") {
+                completedBookings.push(booking);
+            } else if (booking.status === "rejected") {
+                rejectedBookings.push(booking);
+            }
+        });
+
+        pendingBookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        scheduledBookings.sort((a, b) => new Date(a.tripDetails?.preferredDate) - new Date(b.tripDetails?.preferredDate));
+        completedBookings.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+        rejectedBookings.sort((a, b) => new Date(b.rejectedAt) - new Date(a.rejectedAt));
+
+        res.json({
+            pendingBookings,
+            scheduledBookings,
+            completedBookings,
+            rejectedBookings,
+            unavailableDates: req.user.unavailableDates || [],
+        });
+    } catch (error) {
+        console.error("Get guide dashboard data error:", error);
+        res.status(500).json({ message: "Server error fetching guide dashboard data" });
     }
 };
 

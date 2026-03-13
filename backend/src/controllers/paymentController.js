@@ -288,23 +288,12 @@ export const verifyPayment = async (req, res) => {
             payment.status = "paid";
             await payment.save();
 
-            // Update booking status to scheduled
+            // Update booking status to scheduled (webhook may have already done this)
             if (booking.status === "awaiting_payment") {
                 booking.status = "scheduled";
                 booking.scheduledAt = new Date();
                 await booking.save();
-
-                // Populate for socket emission
-                const populatedBooking = await Booking.findById(bookingId)
-                    .populate("touristId", "fullName email")
-                    .populate("guideId", "fullName email")
-                    .populate("itineraryId");
-
-                // Emit socket events to notify both tourist and guide
-                emitToUser(populatedBooking.touristId._id.toString(), "payment-paid", populatedBooking);
-                if (populatedBooking.guideId) {
-                    emitToGuide(populatedBooking.guideId._id.toString(), "payment-paid", populatedBooking);
-                }
+                // Note: Socket events are emitted by webhook handler to avoid duplicates
             }
 
             return res.json({

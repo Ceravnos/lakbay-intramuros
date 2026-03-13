@@ -3,11 +3,14 @@ import {
     createBooking,
     getPendingBookings,
     getMyAcceptedBookings,
+    getMyScheduledBookings,
+    getGuideDashboardData,
     getMyRejectedBookings,
     getBookingHistory,
     acceptBooking,
     rejectBooking,
     completeBooking,
+    startTrip,
     getMyBookings,
     cancelBooking,
     getBookingStats,
@@ -31,14 +34,17 @@ router.put("/:id/update-revision", touristOnly, updateBookingRevision);
 router.put("/:id/accept-revision", touristOnly, acceptRevision);
 
 // Guide routes (approved guides only)
+router.get("/guide-dashboard", approvedGuideOnly, getGuideDashboardData);
 router.get("/pending", approvedGuideOnly, getPendingBookings);
 router.get("/my-accepted", approvedGuideOnly, getMyAcceptedBookings);
+router.get("/my-scheduled", approvedGuideOnly, getMyScheduledBookings);
 router.get("/history", approvedGuideOnly, getBookingHistory);
 router.get("/my-rejected", approvedGuideOnly, getMyRejectedBookings);
 
 router.put("/:id/accept", approvedGuideOnly, acceptBooking);
 router.put("/:id/reject", approvedGuideOnly, rejectBooking);
 router.put("/:id/revision", approvedGuideOnly, requestRevision);
+router.put("/:id/start", approvedGuideOnly, startTrip);
 
 router.put("/:id/complete", approvedGuideOnly, completeBooking);
 

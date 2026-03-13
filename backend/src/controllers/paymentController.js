@@ -180,16 +180,17 @@ export const handleWebhook = async (req, res) => {
                 await payment.save();
             }
 
-            // Update booking status to paid
+            // Update booking status to scheduled (paid and waiting for trip date)
             const booking = await Booking.findById(bookingId)
                 .populate("touristId", "fullName email")
                 .populate("guideId", "fullName email")
                 .populate("itineraryId");
                 
             if (booking && booking.status === "awaiting_payment") {
-                booking.status = "paid";
+                booking.status = "scheduled";
+                booking.scheduledAt = new Date();
                 await booking.save();
-                console.log(`[PayMongo Webhook] Booking ${bookingId} marked as paid`);
+                console.log(`[PayMongo Webhook] Booking ${bookingId} marked as scheduled`);
 
                 // Emit socket events to notify both tourist and guide
                 emitToUser(booking.touristId._id.toString(), "payment-paid", booking);
@@ -287,22 +288,12 @@ export const verifyPayment = async (req, res) => {
             payment.status = "paid";
             await payment.save();
 
-            // Update booking status
+            // Update booking status to scheduled (webhook may have already done this)
             if (booking.status === "awaiting_payment") {
-                booking.status = "paid";
+                booking.status = "scheduled";
+                booking.scheduledAt = new Date();
                 await booking.save();
-
-                // Populate for socket emission
-                const populatedBooking = await Booking.findById(bookingId)
-                    .populate("touristId", "fullName email")
-                    .populate("guideId", "fullName email")
-                    .populate("itineraryId");
-
-                // Emit socket events to notify both tourist and guide
-                emitToUser(populatedBooking.touristId._id.toString(), "payment-paid", populatedBooking);
-                if (populatedBooking.guideId) {
-                    emitToGuide(populatedBooking.guideId._id.toString(), "payment-paid", populatedBooking);
-                }
+                // Note: Socket events are emitted by webhook handler to avoid duplicates
             }
 
             return res.json({

@@ -19,12 +19,25 @@ const bookingSchema = new mongoose.Schema(
         },
         status: {
             type: String,
-            enum: ["pending", "accepted", "awaiting_payment", "paid", "completed", "cancelled", "rejected"],
+            enum: ["pending", "accepted", "awaiting_payment", "paid", "scheduled", "active", "completed", "cancelled", "rejected"],
             default: "pending",
+        },
+        scheduledAt: {
+            type: Date,
+            default: null,
+        },
+        startedAt: {
+            type: Date,
+            default: null,
         },
         isRated: {
             type: Boolean,
             default: false,
+        },
+        timeSlot: {
+            type: String,
+            enum: ["AM", "PM"],
+            required: true,
         },
         tripDetails: {
             title: {
@@ -88,6 +101,11 @@ const bookingSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+bookingSchema.index({ guideId: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ guideId: 1, status: 1, "tripDetails.preferredDate": 1 });
+bookingSchema.index({ guideId: 1, timeSlot: 1, "tripDetails.preferredDate": 1, status: 1 });
+bookingSchema.index({ touristId: 1, itineraryId: 1, status: 1 });
 
 const Booking = mongoose.model("Booking", bookingSchema);
 

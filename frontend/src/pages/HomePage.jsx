@@ -165,17 +165,12 @@ const HomePage = () => {
 
         if (paymentStatus && bookingId) {
             if (paymentStatus === 'success') {
-                // Verify payment with backend
+                // Verify payment with backend (toast handled by socket event)
                 const verifyPayment = async () => {
                     try {
-                        const res = await api.post(`/payments/verify/${bookingId}`);
-                        if (res.data.status === 'paid') {
-                            toast.success('Payment successful. Your tour booking is confirmed.');
-                        } else {
-                            toast.success('Payment is being processed. Your booking will be updated shortly.');
-                        }
+                        await api.post(`/payments/verify/${bookingId}`);
                     } catch (error) {
-                        toast.success('Payment submitted. Your booking will be updated shortly.');
+                        // Silent - socket event will handle notification
                     }
                     fetchData();
                 };

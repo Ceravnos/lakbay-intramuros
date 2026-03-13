@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { 
     MapPin, Calendar, Users, Clock, ChevronLeft, Loader2, 
@@ -18,6 +18,10 @@ const BookingPage = () => {
     const [selectedGuide, setSelectedGuide] = useState(null);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [guidesLoading, setGuidesLoading] = useState(false);
+    const [guidesLoadedForDate, setGuidesLoadedForDate] = useState(
+        location.state?.prefetchedGuidesDate || ''
+    );
     
     // Revision mode - when updating an existing booking
     const [isRevisionMode, setIsRevisionMode] = useState(false);
@@ -55,7 +59,13 @@ const BookingPage = () => {
         { id: 'senior', label: 'Senior Citizen (60+)', icon: Heart },
         { id: 'locomotive', label: 'Locomotive Limitations', icon: AlertCircle },
     ];
-    const [allGuides, setAllGuides] = useState([]);
+    const [allGuides, setAllGuides] = useState(() =>
+        Array.isArray(location.state?.prefetchedGuides) ? location.state.prefetchedGuides : []
+    );
+    const prefetchedGuidesRef = useRef({
+        date: location.state?.prefetchedGuidesDate || '',
+        fetchedAt: location.state?.prefetchedGuidesFetchedAt || 0,
+    });
 
     // Helper to convert any date to YYYY-MM-DD string format
     const toDateInputValue = (date) => {
@@ -159,14 +169,6 @@ const BookingPage = () => {
                     numberOfPeople: itineraryRes.data.numberOfPeople || 1,
                 }));
             }
-
-            // Fetch all guides
-            try {
-                const guidesRes = await api.get('/users/guides');
-                setAllGuides(guidesRes.data);
-            } catch (err) {
-                console.log('Could not fetch guides');
-            }
         } catch (error) {
             toast.error('Failed to load itinerary');
             navigate('/dashboard');
@@ -175,11 +177,61 @@ const BookingPage = () => {
         }
     };
 
-    // Filter guides based on selected date availability
+    // Fetch guides with slot availability when date changes
+    const fetchGuidesForDate = async (date, options = {}) => {
+        if (!date) return;
+        const { background = false } = options;
+
+        if (!background) {
+            setGuidesLoading(true);
+        }
+
+        try {
+            const guidesRes = await api.get(`/users/guides?date=${date}`);
+            setAllGuides(guidesRes.data);
+            setGuidesLoadedForDate(date);
+        } catch (err) {
+            console.log('Could not fetch guides for date');
+        } finally {
+            if (!background) {
+                setGuidesLoading(false);
+            }
+        }
+    };
+
+    // Re-fetch guides when date changes to get slot availability + auto-refresh
+    useEffect(() => {
+        if (bookingDetails.preferredDate) {
+            const prefetchedDate = prefetchedGuidesRef.current.date
+                ? toDateInputValue(prefetchedGuidesRef.current.date)
+                : '';
+            const hasFreshPrefetchedGuides =
+                prefetchedDate === bookingDetails.preferredDate &&
+                Date.now() - prefetchedGuidesRef.current.fetchedAt < 15000;
+
+            if (hasFreshPrefetchedGuides) {
+                setGuidesLoadedForDate(bookingDetails.preferredDate);
+                prefetchedGuidesRef.current = { date: '', fetchedAt: 0 };
+            } else {
+                fetchGuidesForDate(bookingDetails.preferredDate);
+            }
+            
+            // Auto-refresh every 10 seconds for real-time updates
+            const interval = setInterval(() => {
+                fetchGuidesForDate(bookingDetails.preferredDate, { background: true });
+            }, 10000);
+            
+            return () => clearInterval(interval);
+        }
+    }, [bookingDetails.preferredDate]);
+
+    // Filter guides based on selected date availability (unavailable dates)
     const availableGuides = useMemo(() => {
         if (!bookingDetails.preferredDate || allGuides.length === 0) return [];
         
         return allGuides.filter(guide => {
+            // Already filtered out fully booked guides from backend
+            // Now filter by unavailable dates
             if (!guide.unavailableDates || guide.unavailableDates.length === 0) return true;
             
             // Check if the selected date is in the guide's unavailable dates
@@ -194,16 +246,43 @@ const BookingPage = () => {
         });
     }, [bookingDetails.preferredDate, allGuides]);
 
+    // Check if selected time slot is available for selected guide
+    const isSlotAvailable = (slot) => {
+        if (!selectedGuide) return true;
+        return !selectedGuide.bookedSlots?.[slot];
+    };
+
     // Reset selected guide when date changes and guide becomes unavailable
     useEffect(() => {
         if (selectedGuide && bookingDetails.preferredDate) {
             const isStillAvailable = availableGuides.some(g => g._id === selectedGuide._id);
             if (!isStillAvailable) {
                 setSelectedGuide(null);
+                setBookingDetails(prev => ({ ...prev, preferredTime: '' }));
                 toast('Selected guide is not available on this date', { icon: '📅' });
             }
         }
     }, [bookingDetails.preferredDate, availableGuides]);
+
+    // Sync selectedGuide with allGuides when guides data updates (to get bookedSlots)
+    useEffect(() => {
+        if (selectedGuide && allGuides.length > 0) {
+            const updatedGuide = allGuides.find(g => g._id === selectedGuide._id);
+            if (updatedGuide && JSON.stringify(updatedGuide.bookedSlots) !== JSON.stringify(selectedGuide.bookedSlots)) {
+                setSelectedGuide(updatedGuide);
+            }
+        }
+    }, [allGuides]);
+
+    // Reset time slot when guide changes and selected slot is not available
+    useEffect(() => {
+        if (selectedGuide && bookingDetails.preferredTime) {
+            if (!isSlotAvailable(bookingDetails.preferredTime)) {
+                setBookingDetails(prev => ({ ...prev, preferredTime: '' }));
+                toast('Selected time slot is not available for this guide', { icon: '⏰' });
+            }
+        }
+    }, [selectedGuide]);
 
     const handleSubmitBooking = async () => {
         if (!bookingDetails.preferredDate || !bookingDetails.preferredTime) {
@@ -246,6 +325,7 @@ const BookingPage = () => {
                 await api.post('/bookings', {
                     itineraryId,
                     guideId: selectedGuide._id,
+                    timeSlot: bookingDetails.preferredTime,
                     tripDetails: {
                         title: itinerary.name,
                         preferredDate: preferredDateTime,
@@ -477,11 +557,14 @@ const BookingPage = () => {
                                     <div className="grid grid-cols-2 gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setBookingDetails(prev => ({ ...prev, preferredTime: 'AM' }))}
+                                            onClick={() => isSlotAvailable('AM') && setBookingDetails(prev => ({ ...prev, preferredTime: 'AM' }))}
+                                            disabled={!isSlotAvailable('AM')}
                                             className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${
-                                                bookingDetails.preferredTime === 'AM'
-                                                    ? 'border-terracotta-500 bg-terracotta-50 text-terracotta-700'
-                                                    : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
+                                                !isSlotAvailable('AM')
+                                                    ? 'border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed opacity-60'
+                                                    : bookingDetails.preferredTime === 'AM'
+                                                        ? 'border-terracotta-500 bg-terracotta-50 text-terracotta-700'
+                                                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
                                             }`}
                                         >
                                             <Sun className="w-4 h-4" />
@@ -489,11 +572,14 @@ const BookingPage = () => {
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => setBookingDetails(prev => ({ ...prev, preferredTime: 'PM' }))}
+                                            onClick={() => isSlotAvailable('PM') && setBookingDetails(prev => ({ ...prev, preferredTime: 'PM' }))}
+                                            disabled={!isSlotAvailable('PM')}
                                             className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${
-                                                bookingDetails.preferredTime === 'PM'
-                                                    ? 'border-terracotta-500 bg-terracotta-50 text-terracotta-700'
-                                                    : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
+                                                !isSlotAvailable('PM')
+                                                    ? 'border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed opacity-60'
+                                                    : bookingDetails.preferredTime === 'PM'
+                                                        ? 'border-terracotta-500 bg-terracotta-50 text-terracotta-700'
+                                                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
                                             }`}
                                         >
                                             <Sunset className="w-4 h-4" />
@@ -519,6 +605,11 @@ const BookingPage = () => {
                                 <div className="text-center py-8 bg-stone-50 rounded-xl border border-dashed border-stone-300">
                                     <CalendarDays className="w-12 h-12 text-stone-300 mx-auto mb-3" />
                                     <p className="text-stone-500">Select a date above to see available guides</p>
+                                </div>
+                            ) : guidesLoading || guidesLoadedForDate !== bookingDetails.preferredDate ? (
+                                <div className="text-center py-8 bg-stone-50 rounded-xl border border-dashed border-stone-300">
+                                    <Loader2 className="w-8 h-8 text-stone-400 animate-spin mx-auto mb-3" />
+                                    <p className="text-stone-500">Loading available guides...</p>
                                 </div>
                             ) : availableGuides.length === 0 ? (
                                 <div className="text-center py-8">
@@ -570,6 +661,23 @@ const BookingPage = () => {
                                                         <Phone className="w-3 h-3" />
                                                         {guide.contactNumber}
                                                     </p>
+                                                )}
+                                                {/* Slot availability indicators - only show available slots */}
+                                                {guide.bookedSlots && (guide.bookedSlots.AM === false || guide.bookedSlots.PM === false) && (
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        {!guide.bookedSlots.AM && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-sage-100 text-sage-700">
+                                                                <Sun className="w-3 h-3" />
+                                                                AM
+                                                            </span>
+                                                        )}
+                                                        {!guide.bookedSlots.PM && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-sage-100 text-sage-700">
+                                                                <Sunset className="w-3 h-3" />
+                                                                PM
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
 

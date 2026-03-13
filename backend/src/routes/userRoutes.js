@@ -1,16 +1,70 @@
 import express from "express";
 import { protect } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
+import Booking from "../models/Booking.js";
 
 const router = express.Router();
 
-// Get all approved guides (for booking) - includes unavailable dates
+// Get all approved guides (for booking) - includes unavailable dates and slot availability
 router.get("/guides", protect, async (req, res) => {
   try {
+    const { date } = req.query;
+    
     const guides = await User.find({
       role: "guide",
       guideStatus: "approved",
-    }).select("fullName email contactNumber totalStars totalRatings unavailableDates profilePicture");
+    })
+      .select("fullName email contactNumber totalStars totalRatings unavailableDates profilePicture")
+      .lean();
+
+    // If a date is provided, check slot availability for each guide
+    if (date) {
+      const queryDate = new Date(date);
+      const dateStart = new Date(queryDate);
+      dateStart.setHours(0, 0, 0, 0);
+      const dateEnd = new Date(queryDate);
+      dateEnd.setHours(23, 59, 59, 999);
+
+      // Get all active bookings for this date
+      const bookingsOnDate = await Booking.find({
+        guideId: { $ne: null },
+        "tripDetails.preferredDate": { $gte: dateStart, $lte: dateEnd },
+        status: { $in: ["pending", "accepted", "awaiting_payment", "scheduled", "active"] },
+      })
+        .select("guideId timeSlot")
+        .lean();
+
+      // Create a map of guide bookings
+      const guideBookings = {};
+      bookingsOnDate.forEach(booking => {
+        if (booking.guideId) {
+          const guideIdStr = booking.guideId.toString();
+          if (!guideBookings[guideIdStr]) {
+            guideBookings[guideIdStr] = { AM: false, PM: false };
+          }
+          guideBookings[guideIdStr][booking.timeSlot] = true;
+        }
+      });
+
+      // Add slot availability to each guide
+      const guidesWithAvailability = guides.map(guide => {
+        const guideIdStr = guide._id.toString();
+        const slots = guideBookings[guideIdStr] || { AM: false, PM: false };
+        
+        return {
+          ...guide,
+          bookedSlots: {
+            AM: slots.AM,
+            PM: slots.PM,
+          },
+          fullyBooked: slots.AM && slots.PM,
+        };
+      });
+
+      // Filter out fully booked guides
+      const availableGuides = guidesWithAvailability.filter(g => !g.fullyBooked);
+      return res.json(availableGuides);
+    }
 
     res.json(guides);
   } catch (error) {

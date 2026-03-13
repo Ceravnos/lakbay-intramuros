@@ -61,6 +61,9 @@ const ItineraryBuilderPage = () => {
 
     // Load existing itinerary or session data
     useEffect(() => {
+        setDirectionsResult(null);
+        setTripStarted(false);
+
         if (id) {
             fetchItinerary(id);
             checkIfOngoingTour(id);
@@ -154,6 +157,11 @@ const ItineraryBuilderPage = () => {
             return;
         }
 
+        if (itinerary.locations.length === 0) {
+            toast.error('Please add at least one location to your itinerary');
+            return;
+        }
+
         setSaving(true);
         try {
             if (id) {
@@ -174,6 +182,11 @@ const ItineraryBuilderPage = () => {
     };
 
     const addLocation = useCallback((landmark) => {
+        if (itinerary.locations.length >= 10) {
+            toast.error('Maximum of 10 stops allowed');
+            return;
+        }
+
         const exists = itinerary.locations.find(loc => loc.placeId === landmark.placeId);
         if (exists) {
             toast.error('Location already added');
@@ -445,6 +458,7 @@ const ItineraryBuilderPage = () => {
                             }))}
                         showNumberedPins={itinerary.locations.length > 0}
                         directionsResult={directionsResult}
+                        tripStarted={tripStarted}
                         className="absolute inset-0"
                     />
 

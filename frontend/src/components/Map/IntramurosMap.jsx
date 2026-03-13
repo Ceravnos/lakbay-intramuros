@@ -57,6 +57,7 @@ const IntramurosMap = ({
     interactive = true,
     className = '',
     directionsResult = null,
+    tripStarted = false,
 }) => {
     const { isLoaded, loadError } = useLoadScript({
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
@@ -128,6 +129,10 @@ const IntramurosMap = ({
         };
     };
 
+    const selectedPlaceIds = new Set(
+        markers.flatMap((marker) => [marker.id, marker.placeId]).filter(Boolean)
+    );
+
     return (
         <GoogleMap
             mapContainerStyle={mapContainerStyle}
@@ -148,21 +153,66 @@ const IntramurosMap = ({
                         polylineOptions: {
                             strokeColor: '#B45309',
                             strokeWeight: 4,
-                            strokeOpacity: 0.8,
+                            strokeOpacity: 0,
+                            icons: [{
+                                icon: {
+                                    path: 'M 0,-1 0,1',
+                                    strokeColor: '#B45309',
+                                    strokeOpacity: 1,
+                                    scale: 3,
+                                },
+                                offset: '0',
+                                repeat: '15px',
+                            }],
                         },
                     }}
                 />
             )}
 
-            {/* Render markers with sequential numbers */}
-            {INTRAMUROS_LOCATIONS.map((location) => (
-                <Marker
-                    key={location.id}
-                    position={{ lat: location.lat, lng: location.lng }}
-                    icon={getMarkerIcon(location)}
-                    onClick={() => handleMarkerClick(location)}
-                />
-            ))}
+            {/* Render selected markers with numbered pins */}
+            {markers.map((location, index) => {
+                // Get full location data for InfoWindow
+                const locationData = INTRAMUROS_LOCATIONS.find(l => 
+                    l.id === location.id || l.placeId === location.placeId
+                ) || location;
+                
+                return (
+                    <Marker
+                        key={`selected-${location.id || location.placeId || index}`}
+                        position={{ lat: location.lat, lng: location.lng }}
+                        icon={showNumberedPins ? {
+                            path: window.google.maps.SymbolPath.CIRCLE,
+                            fillColor: '#B45309',
+                            fillOpacity: 1,
+                            strokeColor: '#FFFFFF',
+                            strokeWeight: 2,
+                            scale: 14,
+                        } : getMarkerIcon(locationData)}
+                        label={showNumberedPins ? {
+                            text: String(index + 1),
+                            color: '#FFFFFF',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                        } : undefined}
+                        zIndex={1000 + index}
+                        onClick={() => handleMarkerClick({ ...locationData, ...location })}
+                    />
+                );
+            })}
+            
+            {/* Render unselected location markers (hidden when trip starts) */}
+            {!tripStarted && INTRAMUROS_LOCATIONS
+                .filter(loc => !selectedPlaceIds.has(loc.id) && !selectedPlaceIds.has(loc.placeId))
+                .map((location) => (
+                    <Marker
+                        key={`unselected-${location.id}`}
+                        position={{ lat: location.lat, lng: location.lng }}
+                        icon={getMarkerIcon(location)}
+                        zIndex={100}
+                        onClick={() => handleMarkerClick(location)}
+                    />
+                ))
+            }
             
             {/* Info window for selected marker */}
             {selectedMarker && (

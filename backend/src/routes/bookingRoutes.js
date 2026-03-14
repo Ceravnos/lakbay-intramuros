@@ -13,6 +13,7 @@ import {
     startTrip,
     getMyBookings,
     cancelBooking,
+    deleteBooking,
     getBookingStats,
     requestRevision,
     updateBookingRevision,
@@ -30,6 +31,7 @@ router.use(updateLastActivity);
 router.post("/", touristOnly, createBooking);
 router.get("/my-bookings", touristOnly, getMyBookings);
 router.put("/:id/cancel", touristOnly, cancelBooking);
+router.delete("/:id", touristOnly, deleteBooking);
 router.put("/:id/update-revision", touristOnly, updateBookingRevision);
 router.put("/:id/accept-revision", touristOnly, acceptRevision);
 

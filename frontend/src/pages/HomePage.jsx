@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2, XCircle, CreditCard } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
@@ -9,6 +9,18 @@ import Navbar from '../components/Navbar'
 import RateLimitedUI from '../components/RateLimitedUI'
 import ConfirmationModal from '../components/ConfirmationModal'
 import RevisionReviewModal from '../components/RevisionReviewModal'
+
+const TRIP_PROGRESS_STORAGE_KEY = 'lakbay_itinerary_trip_progress';
+
+const readTripProgressMap = () => {
+    if (typeof window === 'undefined') return {};
+
+    try {
+        return JSON.parse(window.localStorage.getItem(TRIP_PROGRESS_STORAGE_KEY) || '{}');
+    } catch {
+        return {};
+    }
+};
 
 // ⭐ Rating Modal Component
 const RatingModal = ({ booking, onClose, onSubmit, submitting }) => {
@@ -92,6 +104,7 @@ const RatingModal = ({ booking, onClose, onSubmit, submitting }) => {
 
 const HomePage = () => {
     const { user, isAuthenticated, isGuideMode } = useAuth();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [isRateLimited, setIsRateLimited] = useState(false);
     const [itineraries, setItineraries] = useState([]);
@@ -102,6 +115,12 @@ const HomePage = () => {
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
     const [cancelBookingId, setCancelBookingId] = useState(null);
     const [cancelLoading, setCancelLoading] = useState(false);
+    const [deleteBookingModalOpen, setDeleteBookingModalOpen] = useState(false);
+    const [deleteBookingId, setDeleteBookingId] = useState(null);
+    const [deleteBookingLoading, setDeleteBookingLoading] = useState(false);
+    const [deleteItineraryModalOpen, setDeleteItineraryModalOpen] = useState(false);
+    const [deleteItineraryId, setDeleteItineraryId] = useState(null);
+    const [deleteItineraryLoading, setDeleteItineraryLoading] = useState(false);
     const [ratingSubmitting, setRatingSubmitting] = useState(false);
     const [paymentLoading, setPaymentLoading] = useState(null);
     
@@ -110,6 +129,8 @@ const HomePage = () => {
     const [revisionBooking, setRevisionBooking] = useState(null);
     const [acceptRevisionLoading, setAcceptRevisionLoading] = useState(false);
     const [cancelRevisionLoading, setCancelRevisionLoading] = useState(false);
+    const [showAllBookings, setShowAllBookings] = useState(false);
+    const [showAllItineraries, setShowAllItineraries] = useState(false);
 
 
     const fetchData = useCallback(async () => {
@@ -264,15 +285,25 @@ const HomePage = () => {
 
 
 
-    const handleDeleteItinerary = async (id) => {
-        if (!window.confirm("Are you sure you want to delete this itinerary?")) return;
-        
+    const openDeleteItineraryModal = (id) => {
+        setDeleteItineraryId(id);
+        setDeleteItineraryModalOpen(true);
+    };
+
+    const handleDeleteItinerary = async () => {
+        if (!deleteItineraryId) return;
+
+        setDeleteItineraryLoading(true);
         try {
-            await api.delete(`/itineraries/${id}`);
+            await api.delete(`/itineraries/${deleteItineraryId}`);
             toast.success("Itinerary deleted");
-            setItineraries(prev => prev.filter(item => item._id !== id));
+            setItineraries(prev => prev.filter(item => item._id !== deleteItineraryId));
+            setDeleteItineraryModalOpen(false);
+            setDeleteItineraryId(null);
         } catch (error) {
             toast.error("Failed to delete itinerary");
+        } finally {
+            setDeleteItineraryLoading(false);
         }
     };
 
@@ -299,6 +330,29 @@ const HomePage = () => {
         }
     };
 
+    const openDeleteBookingModal = (id) => {
+        setDeleteBookingId(id);
+        setDeleteBookingModalOpen(true);
+    };
+
+    const handleDeleteBooking = async () => {
+        if (!deleteBookingId) return;
+
+        setDeleteBookingLoading(true);
+        try {
+            await api.delete(`/bookings/${deleteBookingId}`);
+            toast.success("Booking deleted");
+            setMyBookings(prev => prev.filter(item => item._id !== deleteBookingId));
+            setDeleteBookingModalOpen(false);
+            setDeleteBookingId(null);
+            fetchData();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to delete booking");
+        } finally {
+            setDeleteBookingLoading(false);
+        }
+    };
+
     const formatDate = (date) => {
         return new Date(date).toLocaleDateString('en-US', {
             month: 'short',
@@ -315,8 +369,6 @@ const HomePage = () => {
         })
     };
 
-    // Filter out itineraries that have active bookings (pending/accepted)
-    // Handle Pay Now click
     const handlePayNow = async (booking) => {
         const PRICE_PER_PERSON = 150;
         const amount = (booking.tripDetails?.numberOfPeople || 1) * PRICE_PER_PERSON;
@@ -340,12 +392,57 @@ const HomePage = () => {
         }
     };
 
-    const bookedItineraryIds = myBookings
-        .filter(b => ['pending', 'accepted', 'awaiting_payment', 'paid'].includes(b.status))
-        .map(b => b.itineraryId?._id || b.itineraryId);
-    const unbookedItineraries = itineraries.filter(
-        it => !bookedItineraryIds.includes(it._id)
+    const handleOpenBookingItinerary = (booking) => {
+        const itineraryId = booking.itineraryId?._id || booking.itineraryId;
+        if (!itineraryId) return;
+        navigate(`/itinerary/${itineraryId}`);
+    };
+
+    const bookingStatusPriority = {
+        paid: 0,
+        accepted: 1,
+        active: 2,
+        scheduled: 3,
+        awaiting_payment: 4,
+        pending: 5,
+        completed: 6,
+        rejected: 7,
+        cancelled: 8,
+    };
+
+    const archivedBookingStatuses = ['completed', 'rejected', 'cancelled'];
+
+    const sortedBookings = [...myBookings].sort((a, b) => {
+        const priorityDifference =
+            (bookingStatusPriority[a.status] ?? 99) - (bookingStatusPriority[b.status] ?? 99);
+
+        if (priorityDifference !== 0) {
+            return priorityDifference;
+        }
+
+        const aDate = new Date(a.tripDetails?.preferredDate || a.updatedAt || a.createdAt || 0).getTime();
+        const bDate = new Date(b.tripDetails?.preferredDate || b.updatedAt || b.createdAt || 0).getTime();
+
+        if (archivedBookingStatuses.includes(a.status) && archivedBookingStatuses.includes(b.status)) {
+            return bDate - aDate;
+        }
+
+        return aDate - bDate;
+    });
+
+    const bookedItineraryIds = new Set(
+        myBookings
+            .map(b => b.itineraryId?._id || b.itineraryId)
+            .filter(Boolean)
     );
+
+    const unbookedItineraries = itineraries.filter(
+        it => !bookedItineraryIds.has(it._id)
+    );
+
+    const visibleBookings = showAllBookings ? sortedBookings : sortedBookings.slice(0, 3);
+    const visibleItineraries = showAllItineraries ? unbookedItineraries : unbookedItineraries.slice(0, 3);
+    const tripProgressMap = readTripProgressMap();
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -353,6 +450,8 @@ const HomePage = () => {
             case "accepted": return 'bg-lime-600 text-white border-sage-300';
             case "awaiting_payment": return 'bg-amber-500 text-white border-amber-300';
             case "paid": return 'bg-emerald-600 text-white border-emerald-300';
+            case "scheduled": return 'bg-sky-600 text-white border-sky-300';
+            case "active": return 'bg-blue-600 text-white border-blue-300';
             case "completed": return 'bg-stone-100 text-stone-600 border-stone-300';
             case "cancelled": return 'bg-red-600 text-white border-stone-300';
             case "rejected": return 'bg-red-800 text-white border-stone-300';
@@ -366,6 +465,8 @@ const HomePage = () => {
             case "accepted": return 'Active';
             case "awaiting_payment": return 'Awaiting Payment';
             case "paid": return 'Paid';
+            case "scheduled": return 'Scheduled';
+            case "active": return 'Ongoing';
             case "completed": return 'Completed';
             case "cancelled": return 'Cancelled';
             case "rejected": return 'Rejected';
@@ -407,16 +508,36 @@ const HomePage = () => {
 
             <div className="max-w-6xl mx-auto px-4 py-8">
                 {/* Bookings Section */}
-                {myBookings.length > 0 && (
+                {sortedBookings.length > 0 && (
                     <section className="mb-10">
-                        <h2 className="text-lg font-serif font-semibold text-stone-800 mb-4">
-                            Your Bookings
-                        </h2>
+                        <div className="flex items-center justify-between gap-4 mb-4">
+                            <h2 className="text-lg font-serif font-semibold text-stone-800">
+                                Your Bookings
+                            </h2>
+                            {sortedBookings.length > 3 && (
+                                <button
+                                    onClick={() => setShowAllBookings(prev => !prev)}
+                                    className="inline-flex items-center gap-1 text-sm font-medium text-terracotta-600 hover:text-terracotta-700"
+                                >
+                                    {showAllBookings ? 'View less' : 'View more'}
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {myBookings.map((booking) => (
+                            {visibleBookings.map((booking) => (
                                 <div 
                                     key={booking._id} 
-                                    className="relative bg-white border border-stone-200 rounded-xl p-5 hover:shadow-md transition-shadow"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => handleOpenBookingItinerary(booking)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            handleOpenBookingItinerary(booking);
+                                        }
+                                    }}
+                                    className="relative bg-white border border-stone-200 rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer"
                                 >
                                     <div className="flex items-start justify-between mb-3">
                                         <h4 className="font-medium text-stone-800">
@@ -467,7 +588,10 @@ const HomePage = () => {
                                     {booking.status === "awaiting_payment" && (
                                         <div className="mt-4 pt-3 border-t border-stone-100">
                                             <button
-                                                onClick={() => handlePayNow(booking)}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handlePayNow(booking);
+                                                }}
                                                 disabled={paymentLoading === booking._id}
                                                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                                             >
@@ -483,22 +607,28 @@ const HomePage = () => {
                                         </div>
                                     )}
 
-                                    {/* Paid confirmation */}
-                                    {booking.status === "paid" && (
-                                        <div className="mt-4 pt-3 border-t border-stone-100">
-                                            <p className="text-xs text-emerald-600 font-medium text-center">
-                                                ✓ Payment confirmed — Tour booking is active
-                                            </p>
-                                        </div>
-                                    )}
-
                                     {/* Cancel button */}
                                     {(booking.status === "pending" || booking.status === "awaiting_payment") && (
                                         <button
-                                            onClick={() => openCancelModal(booking._id)}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                openCancelModal(booking._id);
+                                            }}
                                             className={`${booking.status === "awaiting_payment" ? "w-full mt-2 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition" : "absolute bottom-4 right-4 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"}`}
                                         >
                                             Cancel Booking
+                                        </button>
+                                    )}
+
+                                    {["completed", "rejected", "cancelled"].includes(booking.status) && (
+                                        <button
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                openDeleteBookingModal(booking._id);
+                                            }}
+                                            className="absolute bottom-4 right-4 p-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
                                         </button>
                                     )}
                                 </div>
@@ -509,9 +639,20 @@ const HomePage = () => {
 
                 {/* Itineraries Section */}
                 <section>
-                    <h2 className="text-lg font-serif font-semibold text-stone-800 mb-4">
-                        Your Itineraries
-                    </h2>
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                        <h2 className="text-lg font-serif font-semibold text-stone-800">
+                            Your Itineraries
+                        </h2>
+                        {unbookedItineraries.length > 3 && (
+                            <button
+                                onClick={() => setShowAllItineraries(prev => !prev)}
+                                className="inline-flex items-center gap-1 text-sm font-medium text-terracotta-600 hover:text-terracotta-700"
+                            >
+                                {showAllItineraries ? 'View less' : 'View more'}
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
                     
                     {loading ? (
                         <div className="flex items-center justify-center py-12">
@@ -536,25 +677,24 @@ const HomePage = () => {
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                            {unbookedItineraries.map((itinerary) => (
+                            {visibleItineraries.map((itinerary) => {
+                                const tripProgress = tripProgressMap[itinerary._id];
+                                const totalStops = itinerary.locations?.length || tripProgress?.totalStops || 0;
+                                const completedStops = Math.min(tripProgress?.completedStopCount || 0, totalStops);
+                                const hasTripProgress = Boolean(tripProgress) && (completedStops > 0 || tripProgress?.tripStarted);
+                                const progressPercentage = totalStops > 0 ? Math.round((completedStops / totalStops) * 100) : 0;
+                                const isTripOngoing = Boolean(tripProgress?.tripStarted) && completedStops < totalStops;
+
+                                return (
                                 <div 
                                     key={itinerary._id} 
                                     className="group bg-white border border-stone-200 rounded-xl overflow-hidden hover:shadow-lg hover:border-stone-300 transition-all"
                                 >
                                     <Link to={`/itinerary/${itinerary._id}`} className="block p-5">
-                                        <div className="flex items-start justify-between mb-3">
+                                        <div className="mb-3">
                                             <div className="w-10 h-10 bg-terracotta-100 rounded-lg flex items-center justify-center">
                                                 <Navigation className="w-5 h-5 text-terracotta-600" />
                                             </div>
-                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                                itinerary.status === 'booked' 
-                                                    ? 'bg-sage-100 text-sage-700' 
-                                                    : itinerary.status === 'planned'
-                                                    ? 'bg-sand-100 text-sand-700'
-                                                    : 'bg-stone-100 text-stone-600'
-                                            }`}>
-                                                {itinerary.status}
-                                            </span>
                                         </div>
                                         <h3 className="font-serif text-lg font-semibold text-stone-800 mb-2 group-hover:text-terracotta-600 transition-colors">
                                             {itinerary.name}
@@ -571,27 +711,53 @@ const HomePage = () => {
                                                 </span>
                                             )}
                                         </div>
+                                        {hasTripProgress && (
+                                            <div className="mb-3 rounded-lg border border-sage-200 bg-sage-50 p-3">
+                                                <div className="flex items-center justify-between text-xs font-medium text-sage-700">
+                                                    <span>{completedStops} of {totalStops} stops completed</span>
+                                                    <span>
+                                                        {completedStops >= totalStops
+                                                            ? 'Completed'
+                                                            : tripProgress?.tripStarted
+                                                                ? 'In progress'
+                                                                : 'Paused'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 h-1.5 rounded-full bg-white overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-sage-600 transition-all duration-300"
+                                                        style={{ width: `${progressPercentage}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="flex items-center gap-2 text-xs text-stone-400">
                                             <Clock className="w-3.5 h-3.5" />
                                             Updated {formatDate(itinerary.updatedAt)}
                                         </div>
                                     </Link>
                                     <div className="px-5 pb-4 flex items-center justify-between border-t border-stone-100 pt-3">
-                                        <Link 
-                                            to={`/itinerary/${itinerary._id}`}
-                                            className="text-sm text-terracotta-600 hover:text-terracotta-700 font-medium"
-                                        >
-                                            Edit →
-                                        </Link>
+                                        {isTripOngoing ? (
+                                            <span className="text-sm text-stone-400 font-medium">
+                                                Trip ongoing
+                                            </span>
+                                        ) : (
+                                            <Link 
+                                                to={`/itinerary/${itinerary._id}`}
+                                                className="text-sm text-terracotta-600 hover:text-terracotta-700 font-medium"
+                                            >
+                                                Edit →
+                                            </Link>
+                                        )}
                                         <button
-                                            onClick={() => handleDeleteItinerary(itinerary._id)}
+                                            onClick={() => openDeleteItineraryModal(itinerary._id)}
                                             className="p-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                         >
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     )}
                 </section>
@@ -622,6 +788,36 @@ const HomePage = () => {
             cancelText="Keep Booking"
             loading={cancelLoading}
             icon={XCircle}
+        />
+
+        <ConfirmationModal
+            isOpen={deleteBookingModalOpen}
+            onClose={() => {
+                setDeleteBookingModalOpen(false);
+                setDeleteBookingId(null);
+            }}
+            onConfirm={handleDeleteBooking}
+            title="Delete Booking"
+            message="Are you sure you want to permanently delete this booking? You will not be able to retrieve it anymore."
+            confirmText="Yes, Delete Booking"
+            cancelText="Keep Booking"
+            loading={deleteBookingLoading}
+            icon={Trash2}
+        />
+
+        <ConfirmationModal
+            isOpen={deleteItineraryModalOpen}
+            onClose={() => {
+                setDeleteItineraryModalOpen(false);
+                setDeleteItineraryId(null);
+            }}
+            onConfirm={handleDeleteItinerary}
+            title="Delete Itinerary"
+            message="Are you sure you want to permanently delete this itinerary? You will not be able to retrieve it anymore."
+            confirmText="Yes, Delete Itinerary"
+            cancelText="Keep Itinerary"
+            loading={deleteItineraryLoading}
+            icon={Trash2}
         />
 
         {/* Revision Review Modal */}

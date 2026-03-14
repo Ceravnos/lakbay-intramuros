@@ -1,5 +1,5 @@
-import { useCallback, useState, useRef, useEffect } from 'react';
-import { GoogleMap, useLoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
+import { Fragment, useCallback, useState, useRef, useEffect } from 'react';
+import { GoogleMap, useLoadScript, Marker, InfoWindow, DirectionsRenderer, OverlayView } from '@react-google-maps/api';
 import { MapPin, Loader2 } from 'lucide-react';
 import { INTRAMUROS_LOCATIONS, getCategoryConfig } from '../../data/locations';
 
@@ -92,6 +92,24 @@ const IntramurosMap = ({
         }
     };
 
+    useEffect(() => {
+        if (!selectedMarkerId) {
+            return;
+        }
+
+        const matchedMarker = markers.find(marker =>
+            marker.id === selectedMarkerId || marker.placeId === selectedMarkerId
+        );
+
+        if (matchedMarker) {
+            const locationData = INTRAMUROS_LOCATIONS.find(l =>
+                l.id === matchedMarker.id || l.placeId === matchedMarker.placeId
+            ) || matchedMarker;
+
+            setSelectedMarker({ ...locationData, ...matchedMarker });
+        }
+    }, [markers, selectedMarkerId]);
+
     if (loadError) {
         return (
             <div className={`flex items-center justify-center bg-stone-100 ${className}`}>
@@ -177,28 +195,65 @@ const IntramurosMap = ({
                 ) || location;
                 
                 return (
-                    <Marker
-                        key={`selected-${location.id || location.placeId || index}`}
-                        position={{ lat: location.lat, lng: location.lng }}
-                        icon={showNumberedPins ? {
-                            path: window.google.maps.SymbolPath.CIRCLE,
-                            fillColor: '#B45309',
-                            fillOpacity: 1,
-                            strokeColor: '#FFFFFF',
-                            strokeWeight: 2,
-                            scale: 14,
-                        } : getMarkerIcon(locationData)}
-                        label={showNumberedPins ? {
-                            text: String(index + 1),
-                            color: '#FFFFFF',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                        } : undefined}
-                        zIndex={1000 + index}
-                        onClick={() => handleMarkerClick({ ...locationData, ...location })}
-                    />
+                    <Fragment key={`selected-group-${location.id || location.placeId || index}`}>
+                        <Marker
+                            key={`selected-${location.id || location.placeId || index}`}
+                            position={{ lat: location.lat, lng: location.lng }}
+                            icon={showNumberedPins ? {
+                                path: window.google.maps.SymbolPath.CIRCLE,
+                                fillColor: '#B45309',
+                                fillOpacity: 1,
+                                strokeColor: '#FFFFFF',
+                                strokeWeight: 2,
+                                scale: 14,
+                            } : getMarkerIcon(locationData)}
+                            label={showNumberedPins ? {
+                                text: String(index + 1),
+                                color: '#FFFFFF',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                            } : undefined}
+                            zIndex={1000 + index}
+                            onClick={() => handleMarkerClick({ ...locationData, ...location })}
+                        />
+                        {showNumberedPins && locationData.name && (
+                            <OverlayView
+                                key={`selected-label-${location.id || location.placeId || index}`}
+                                position={{ lat: location.lat, lng: location.lng }}
+                                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                            >
+                                <div
+                                    className="pointer-events-none"
+                                    style={{ transform: 'translate(-50%, -42px)' }}
+                                >
+                                    <div className="inline-flex items-center rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-700 shadow-sm whitespace-nowrap">
+                                        {locationData.name}
+                                    </div>
+                                </div>
+                            </OverlayView>
+                        )}
+                    </Fragment>
                 );
             })}
+
+            {selectedMarker && (
+                <InfoWindow
+                    position={{ lat: selectedMarker.lat, lng: selectedMarker.lng }}
+                    options={{ pixelOffset: new window.google.maps.Size(0, -20) }}
+                    onCloseClick={() => setSelectedMarker(null)}
+                >
+                    <div className="min-w-[140px]">
+                        <p className="font-semibold text-stone-800 text-sm">
+                            {selectedMarker.name}
+                        </p>
+                        {selectedMarker.address && (
+                            <p className="text-stone-500 text-xs mt-1">
+                                {selectedMarker.address}
+                            </p>
+                        )}
+                    </div>
+                </InfoWindow>
+            )}
             
             {/* Render unselected location markers (hidden when trip starts) */}
             {!tripStarted && INTRAMUROS_LOCATIONS
@@ -214,34 +269,6 @@ const IntramurosMap = ({
                 ))
             }
             
-            {/* Info window for selected marker */}
-            {selectedMarker && (
-                <InfoWindow
-                    position={{ lat: selectedMarker.lat, lng: selectedMarker.lng }}
-                    onCloseClick={() => setSelectedMarker(null)}
-                >
-                    <div className="w-64">
-                        {selectedMarker.image && (
-                            <img
-                                src={selectedMarker.image}
-                                alt={selectedMarker.name}
-                                className="w-full h-28 object-cover rounded-md mb-2"
-                            />
-                        )}
-
-                        <h3 className="font-semibold text-stone-800 text-sm">
-                            {selectedMarker.name}
-                        </h3>
-
-                        {selectedMarker.description && (
-                            <p className="text-stone-500 text-xs mt-1 leading-snug">
-                                {selectedMarker.description}
-                            </p>
-                        )}
-                    </div>
-
-                </InfoWindow>
-            )}
         </GoogleMap>
     );
 };

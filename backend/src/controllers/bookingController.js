@@ -1,4 +1,5 @@
 import Booking from "../models/Booking.js";
+import Payment from "../models/Payment.js";
 import User from "../models/User.js";
 import Itinerary from "../models/Itinerary.js";
 import { emitToGuide, emitToUser } from "../config/socket.js";
@@ -512,6 +513,50 @@ export const cancelBooking = async (req, res) => {
     } catch (error) {
         console.error("Cancel booking error:", error);
         res.status(500).json({ message: "Server error cancelling booking" });
+    }
+};
+
+export const deleteBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const touristId = req.user._id;
+
+        const booking = await Booking.findById(id);
+
+        if (!booking) {
+            return res.status(404).json({ message: "Booking not found" });
+        }
+
+        if (booking.touristId.toString() !== touristId.toString()) {
+            return res.status(403).json({ message: "You can only delete your own bookings" });
+        }
+
+        if (!["completed", "rejected", "cancelled"].includes(booking.status)) {
+            return res.status(400).json({ message: "Only completed, rejected, or cancelled bookings can be deleted" });
+        }
+
+        const itineraryId = booking.itineraryId;
+
+        await Payment.deleteMany({ bookingId: booking._id });
+        await Booking.findByIdAndDelete(id);
+
+        if (itineraryId) {
+            const remainingBookings = await Booking.countDocuments({ touristId, itineraryId });
+
+            if (remainingBookings === 0) {
+                const itinerary = await Itinerary.findById(itineraryId);
+
+                if (itinerary && itinerary.userId.toString() === touristId.toString()) {
+                    itinerary.status = itinerary.locations?.length > 0 || itinerary.preferredDate ? "planned" : "draft";
+                    await itinerary.save();
+                }
+            }
+        }
+
+        res.json({ message: "Booking deleted successfully" });
+    } catch (error) {
+        console.error("Delete booking error:", error);
+        res.status(500).json({ message: "Server error deleting booking" });
     }
 };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router';
 import { 
     MapPin, Plus, X, Navigation, Trash2, Save, GripVertical, 
@@ -10,12 +10,52 @@ import Navbar from '../components/Navbar';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
 import IntramurosMap from '../components/Map/IntramurosMap';
+import ConfirmationModal from '../components/ConfirmationModal';
 import { 
     INTRAMUROS_LOCATIONS, 
     LOCATION_CATEGORIES, 
     generateSmartItinerary, 
     calculateTotalTime 
 } from '../data/locations';
+
+const TRIP_PROGRESS_STORAGE_KEY = 'lakbay_itinerary_trip_progress';
+
+const readTripProgressMap = () => {
+    if (typeof window === 'undefined') return {};
+
+    try {
+        return JSON.parse(window.localStorage.getItem(TRIP_PROGRESS_STORAGE_KEY) || '{}');
+    } catch {
+        return {};
+    }
+};
+
+const writeTripProgress = (itineraryId, progress) => {
+    if (typeof window === 'undefined' || !itineraryId) return;
+
+    const currentProgress = readTripProgressMap();
+
+    window.localStorage.setItem(
+        TRIP_PROGRESS_STORAGE_KEY,
+        JSON.stringify({
+            ...currentProgress,
+            [itineraryId]: progress,
+        })
+    );
+};
+
+const clearTripProgress = (itineraryId) => {
+    if (typeof window === 'undefined' || !itineraryId) return;
+
+    const currentProgress = readTripProgressMap();
+
+    if (!(itineraryId in currentProgress)) return;
+
+    delete currentProgress[itineraryId];
+    window.localStorage.setItem(TRIP_PROGRESS_STORAGE_KEY, JSON.stringify(currentProgress));
+};
+
+const getTodayDateInputValue = () => new Date().toISOString().split('T')[0];
 
 const ItineraryBuilderPage = () => {
     const { id } = useParams();
@@ -27,7 +67,7 @@ const ItineraryBuilderPage = () => {
         name: 'My Intramuros Trip',
         description: '',
         locations: [],
-        preferredDate: '',
+        preferredDate: getTodayDateInputValue(),
         numberOfPeople: 1,
     });
     const [loading, setLoading] = useState(false);
@@ -43,6 +83,8 @@ const ItineraryBuilderPage = () => {
     const [directionsResult, setDirectionsResult] = useState(null);
     const [tripStarted, setTripStarted] = useState(false);
     const [calculatingRoute, setCalculatingRoute] = useState(false);
+    const [completedStopCount, setCompletedStopCount] = useState(0);
+    const [finishModalOpen, setFinishModalOpen] = useState(false);
     
     // Personalization modal
     const [showPersonalization, setShowPersonalization] = useState(false);
@@ -58,11 +100,18 @@ const ItineraryBuilderPage = () => {
     // Read-only mode for ongoing tours
     const [isReadOnly, setIsReadOnly] = useState(false);
     const [activeBooking, setActiveBooking] = useState(null);
+    const [backWarningModalOpen, setBackWarningModalOpen] = useState(false);
+    const previousLocationsLengthRef = useRef(itinerary.locations.length);
+    const tripProgressHydratedRef = useRef(false);
 
     // Load existing itinerary or session data
     useEffect(() => {
         setDirectionsResult(null);
         setTripStarted(false);
+        setCompletedStopCount(0);
+        setFinishModalOpen(false);
+        tripProgressHydratedRef.current = !id;
+        previousLocationsLengthRef.current = 0;
 
         if (id) {
             fetchItinerary(id);
@@ -78,7 +127,12 @@ const ItineraryBuilderPage = () => {
                 order: index,
                 notes: '',
             }));
-            setItinerary(prev => ({ ...prev, locations: sessionLocations }));
+            previousLocationsLengthRef.current = sessionLocations.length;
+            setItinerary(prev => ({ 
+                ...prev, 
+                locations: sessionLocations,
+                preferredDate: prev.preferredDate || getTodayDateInputValue(),
+            }));
         }
     }, [id, location.state]);
 
@@ -87,6 +141,16 @@ const ItineraryBuilderPage = () => {
         try {
             const res = await api.get(`/itineraries/${itineraryId}`);
             setItinerary(res.data);
+
+            const savedProgress = readTripProgressMap()[itineraryId];
+            const totalStops = res.data.locations?.length || 0;
+            const restoredCompletedStopCount = Math.min(savedProgress?.completedStopCount || 0, totalStops);
+
+            previousLocationsLengthRef.current = totalStops;
+            setCompletedStopCount(restoredCompletedStopCount);
+            setTripStarted(Boolean(savedProgress?.tripStarted) && restoredCompletedStopCount < totalStops);
+            setFinishModalOpen(false);
+            tripProgressHydratedRef.current = true;
         } catch (error) {
             toast.error('Failed to load itinerary');
             navigate('/dashboard');
@@ -149,6 +213,15 @@ const ItineraryBuilderPage = () => {
         } finally {
             setBookingRedirectLoading(false);
         }
+    };
+
+    const handleBackNavigation = () => {
+        if (tripStarted) {
+            setBackWarningModalOpen(true);
+            return;
+        }
+
+        navigate('/dashboard');
     };
 
     const handleSave = async () => {
@@ -268,6 +341,19 @@ const ItineraryBuilderPage = () => {
         setDragOverItem(null);
     };
 
+    const sortedLocations = [...itinerary.locations].sort((a, b) => a.order - b.order);
+    const canEditItinerary = !isReadOnly && !tripStarted;
+    const hasTrackedProgress = tripStarted || completedStopCount > 0;
+    const progressPercentage = sortedLocations.length > 0
+        ? Math.round((completedStopCount / sortedLocations.length) * 100)
+        : 0;
+    const currentRouteStart = completedStopCount > 0 && completedStopCount < sortedLocations.length
+        ? sortedLocations[completedStopCount - 1]
+        : null;
+    const currentRouteEnd = completedStopCount > 0 && completedStopCount < sortedLocations.length
+        ? sortedLocations[completedStopCount]
+        : null;
+
     // Filter locations by search and category
     const filteredLandmarks = INTRAMUROS_LOCATIONS.filter(landmark => {
         const matchesSearch = landmark.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -327,69 +413,153 @@ const ItineraryBuilderPage = () => {
         // Clear any existing route when generating new itinerary
         setDirectionsResult(null);
         setTripStarted(false);
+        setCompletedStopCount(0);
+        setFinishModalOpen(false);
         toast.success(`Generated ${generated.length} stops!`);
     };
 
     // Start Trip - Calculate directions (authenticated only)
-    const handleStartTrip = useCallback(async () => {
+    const calculateSegmentRoute = useCallback(async (originLocation, destinationLocation) => {
+        if (!originLocation || !destinationLocation) {
+            setDirectionsResult(null);
+            return;
+        }
+
+        if (!window.google?.maps) {
+            toast.error('Map is still loading');
+            return;
+        }
+
+        setCalculatingRoute(true);
+
+        try {
+            const directionsService = new window.google.maps.DirectionsService();
+            const result = await new Promise((resolve, reject) => {
+                directionsService.route(
+                    {
+                        origin: { lat: originLocation.lat, lng: originLocation.lng },
+                        destination: { lat: destinationLocation.lat, lng: destinationLocation.lng },
+                        travelMode: window.google.maps.TravelMode.WALKING,
+                        optimizeWaypoints: false,
+                    },
+                    (routeResult, status) => {
+                        if (status === 'OK' && routeResult) {
+                            resolve(routeResult);
+                            return;
+                        }
+
+                        reject(new Error(status));
+                    }
+                );
+            });
+
+            setDirectionsResult(result);
+        } catch {
+            setDirectionsResult(null);
+            toast.error('Could not calculate route');
+        } finally {
+            setCalculatingRoute(false);
+        }
+    }, []);
+
+    const handleStartTrip = useCallback(() => {
+        if (tripStarted) {
+            setDirectionsResult(null);
+            setTripStarted(false);
+            setFinishModalOpen(false);
+            toast.success('Trip paused');
+            return;
+        }
+
         if (!isAuthenticated) {
             toast.error('Please login to see routes');
             return;
         }
         
-        if (itinerary.locations.length < 2) {
-            toast.error('Add at least 2 locations to start trip');
+        if (sortedLocations.length === 0) {
+            toast.error('Add at least 1 location to start trip');
             return;
         }
 
-        setCalculatingRoute(true);
-        
-        try {
-            const directionsService = new window.google.maps.DirectionsService();
-            const sortedLocations = [...itinerary.locations].sort((a, b) => a.order - b.order);
-            
-            const origin = { lat: sortedLocations[0].lat, lng: sortedLocations[0].lng };
-            const destination = { lat: sortedLocations[sortedLocations.length - 1].lat, lng: sortedLocations[sortedLocations.length - 1].lng };
-            const waypoints = sortedLocations.slice(1, -1).map(loc => ({
-                location: { lat: loc.lat, lng: loc.lng },
-                stopover: true,
-            }));
+        const shouldRestartTrip = completedStopCount >= sortedLocations.length && sortedLocations.length > 0;
+        const nextCompletedStopCount = shouldRestartTrip ? 0 : completedStopCount;
 
-            directionsService.route(
-                {
-                    origin,
-                    destination,
-                    waypoints,
-                    travelMode: window.google.maps.TravelMode.WALKING,
-                    optimizeWaypoints: false,
-                },
-                (result, status) => {
-                    if (status === 'OK') {
-                        setDirectionsResult(result);
-                        setTripStarted(true);
-                        toast.success('Route calculated!');
-                    } else {
-                        toast.error('Could not calculate route');
-                    }
-                    setCalculatingRoute(false);
-                }
+        setDirectionsResult(null);
+        setTripStarted(true);
+        setCompletedStopCount(nextCompletedStopCount);
+        setFinishModalOpen(false);
+
+        if (nextCompletedStopCount > 0 && nextCompletedStopCount < sortedLocations.length) {
+            calculateSegmentRoute(
+                sortedLocations[nextCompletedStopCount - 1],
+                sortedLocations[nextCompletedStopCount]
             );
-        } catch (error) {
-            toast.error('Failed to calculate route');
-            setCalculatingRoute(false);
+            toast.success('Trip resumed');
+            return;
         }
-    }, [isAuthenticated, itinerary.locations]);
+
+        toast.success(shouldRestartTrip ? 'Trip restarted' : 'Trip started! Complete your first stop to unlock the next route.');
+    }, [calculateSegmentRoute, completedStopCount, isAuthenticated, sortedLocations, tripStarted]);
+
+    const handleCompleteStop = useCallback(async (stopIndex) => {
+        if (!tripStarted || calculatingRoute || stopIndex !== completedStopCount) {
+            return;
+        }
+
+        const nextCompletedStopCount = completedStopCount + 1;
+        setCompletedStopCount(nextCompletedStopCount);
+
+        if (nextCompletedStopCount >= sortedLocations.length) {
+            setDirectionsResult(null);
+            setFinishModalOpen(true);
+            toast.success('Trip has finished');
+            return;
+        }
+
+        await calculateSegmentRoute(
+            sortedLocations[nextCompletedStopCount - 1],
+            sortedLocations[nextCompletedStopCount]
+        );
+    }, [calculateSegmentRoute, calculatingRoute, completedStopCount, sortedLocations, tripStarted]);
 
     // Clear route when locations change
     useEffect(() => {
-        if (tripStarted) {
+        if (!tripProgressHydratedRef.current) {
+            previousLocationsLengthRef.current = itinerary.locations.length;
+            return;
+        }
+
+        if (
+            previousLocationsLengthRef.current !== itinerary.locations.length &&
+            (tripStarted || completedStopCount > 0)
+        ) {
             setDirectionsResult(null);
             setTripStarted(false);
+            setCompletedStopCount(0);
+            setFinishModalOpen(false);
+            clearTripProgress(id);
         }
-    }, [itinerary.locations.length]);
+        previousLocationsLengthRef.current = itinerary.locations.length;
+    }, [completedStopCount, id, itinerary.locations.length, tripStarted]);
+
+    useEffect(() => {
+        if (!id || !tripProgressHydratedRef.current) return;
+
+        if (!tripStarted && completedStopCount === 0) {
+            clearTripProgress(id);
+            return;
+        }
+
+        writeTripProgress(id, {
+            completedStopCount,
+            totalStops: sortedLocations.length,
+            tripStarted,
+            updatedAt: Date.now(),
+        });
+    }, [completedStopCount, id, sortedLocations.length, tripStarted]);
 
     // Calculate total estimated time
-    const totalTime = calculateTotalTime(itinerary.locations);
+    const totalTime = calculateTotalTime(sortedLocations);
 
     if (loading) {
         return (
@@ -421,16 +591,16 @@ const ItineraryBuilderPage = () => {
                                         : activeBooking.status === 'accepted' ? 'Tour in Progress' 
                                         : 'Booking Pending'}
                                 </p>
+                                {activeBooking.status !== 'paid' && (
                                 <p className="text-xs text-sage-600">
-                                    {activeBooking.status === 'paid'
-                                        ? `Payment confirmed for tour with ${activeBooking.guideId?.fullName || 'your guide'}`
-                                        : activeBooking.status === 'awaiting_payment'
+                                    {activeBooking.status === 'awaiting_payment'
                                         ? `Waiting for payment to confirm tour with ${activeBooking.guideId?.fullName || 'your guide'}`
                                         : activeBooking.status === 'accepted'
                                         ? `This itinerary is currently being used for an active tour with ${activeBooking.guideId?.fullName || 'your guide'}`
                                         : `This itinerary has a pending booking request with ${activeBooking.guideId?.fullName || 'a guide'}`
                                     }
                                 </p>
+                                )}
                             </div>
                         </div>
                         <span className="px-3 py-1 bg-sage-200 text-sage-700 text-xs font-medium rounded-full">
@@ -446,8 +616,7 @@ const ItineraryBuilderPage = () => {
                 <div className="flex-1 relative bg-stone-100 min-h-[50vh] lg:min-h-0">
                     {/* Google Map */}
                     <IntramurosMap
-                        markers={itinerary.locations
-                            .sort((a, b) => a.order - b.order)
+                        markers={sortedLocations
                             .map(loc => ({
                                 id: loc.placeId,
                                 placeId: loc.placeId,
@@ -476,7 +645,7 @@ const ItineraryBuilderPage = () => {
                     )}
 
                     {/* Search & Add Locations - Hidden in read-only mode */}
-                    {!isReadOnly && (
+                    {canEditItinerary && (
                     <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96 z-10">
                         <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-stone-200 overflow-hidden">
                             {/* Smart Generate Button */}
@@ -562,13 +731,13 @@ const ItineraryBuilderPage = () => {
                         {/* Back button and Save */}
                         <div className="flex items-center justify-between mb-3">
                             <button
-                                onClick={() => navigate('/dashboard')}
+                                onClick={handleBackNavigation}
                                 className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700 transition-colors"
                             >
                                 <ChevronLeft className="w-4 h-4" />
                                 Back
                             </button>
-                            {!isReadOnly && (
+                            {canEditItinerary && (
                             <button
                                 onClick={handleSave}
                                 disabled={saving}
@@ -588,9 +757,9 @@ const ItineraryBuilderPage = () => {
                         <input
                             type="text"
                             value={itinerary.name}
-                            onChange={(e) => !isReadOnly && setItinerary(prev => ({ ...prev, name: e.target.value }))}
-                            readOnly={isReadOnly}
-                            className={`w-full text-lg font-serif font-semibold text-stone-800 bg-transparent border-b border-transparent ${isReadOnly ? '' : 'hover:border-stone-200 focus:border-terracotta-500'} focus:outline-none transition-colors mb-2 pb-1`}
+                            onChange={(e) => canEditItinerary && setItinerary(prev => ({ ...prev, name: e.target.value }))}
+                            readOnly={!canEditItinerary}
+                            className={`w-full text-lg font-serif font-semibold text-stone-800 bg-transparent border-b border-transparent ${canEditItinerary ? 'hover:border-stone-200 focus:border-terracotta-500' : ''} focus:outline-none transition-colors mb-2 pb-1`}
                             placeholder="Name your itinerary..."
                         />
                         
@@ -600,19 +769,25 @@ const ItineraryBuilderPage = () => {
                             {isAuthenticated ? (
                                 <button
                                     onClick={handleStartTrip}
-                                    disabled={calculatingRoute || itinerary.locations.length < 2}
+                                    disabled={calculatingRoute || (!tripStarted && sortedLocations.length === 0)}
                                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium transition-all ${
                                         tripStarted
-                                            ? 'bg-sage-100 text-sage-700 border border-sage-300'
+                                            ? 'bg-red-600 hover:bg-red-700 text-white'
                                             : 'bg-sage-600 hover:bg-sage-700 text-white'
-                                    }`}
+                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                                 >
                                     {calculatingRoute ? (
                                         <Loader2 className="w-4 h-4 animate-spin" />
                                     ) : (
-                                        <Play className="w-4 h-4" />
+                                        tripStarted ? <X className="w-4 h-4" /> : <Play className="w-4 h-4" />
                                     )}
-                                    {tripStarted ? 'Route Active' : 'Start Trip'}
+                                    {tripStarted
+                                        ? 'Pause Trip'
+                                        : completedStopCount >= sortedLocations.length && sortedLocations.length > 0
+                                            ? 'Restart Trip'
+                                            : completedStopCount > 0
+                                                ? 'Resume Trip'
+                                                : 'Start Trip'}
                                 </button>
                             ) : (
                                 <div className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-stone-100 text-stone-500 rounded-lg text-sm">
@@ -621,6 +796,38 @@ const ItineraryBuilderPage = () => {
                                 </div>
                             )}
                         </div>
+                        {hasTrackedProgress && (
+                            <div className="mt-3 rounded-xl border border-sage-200 bg-sage-50 p-3">
+                                <div className="flex items-center justify-between text-xs font-medium text-sage-700">
+                                    <span>{completedStopCount} of {sortedLocations.length} stops completed</span>
+                                    <span>{progressPercentage}%</span>
+                                </div>
+                                <div className="mt-2 h-2 rounded-full bg-white overflow-hidden">
+                                    <div
+                                        className="h-full bg-sage-600 transition-all duration-300"
+                                        style={{ width: `${progressPercentage}%` }}
+                                    />
+                                </div>
+                                <p className="mt-2 text-xs text-sage-700">
+                                    {completedStopCount >= sortedLocations.length
+                                        ? 'You completed every stop in this itinerary.'
+                                        : !tripStarted && completedStopCount > 0
+                                            ? 'Your trip is paused. Resume whenever you are ready.'
+                                        : completedStopCount === 0
+                                            ? sortedLocations.length > 1
+                                                ? 'Complete Stop 1 to show the route to Stop 2.'
+                                                : 'Complete Stop 1 to finish your trip.'
+                                            : currentRouteStart && currentRouteEnd
+                                                ? `Current route: ${currentRouteStart.name} to ${currentRouteEnd.name}.`
+                                                : ''}
+                                </p>
+                                {tripStarted && (
+                                    <p className="mt-1 text-xs text-stone-500">
+                                        Editing is disabled while your trip is active.
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         
                         {/* Trip Stats */}
                         <div className="flex items-center gap-3 mt-3 text-xs text-stone-500">
@@ -632,10 +839,14 @@ const ItineraryBuilderPage = () => {
                                 <Clock className="w-3.5 h-3.5" />
                                 ~{Math.round(totalTime / 60 * 10) / 10}h
                             </span>
-                            {tripStarted && (
+                            {hasTrackedProgress && (
                                 <span className="flex items-center gap-1 text-sage-600">
                                     <Route className="w-3.5 h-3.5" />
-                                    Route ready
+                                    {completedStopCount >= sortedLocations.length
+                                        ? 'Trip complete'
+                                        : tripStarted
+                                            ? `${completedStopCount}/${sortedLocations.length} complete`
+                                            : `Paused at ${completedStopCount}/${sortedLocations.length}`}
                                 </span>
                             )}
                         </div>
@@ -654,9 +865,9 @@ const ItineraryBuilderPage = () => {
                                         type="date"
                                         value={itinerary.preferredDate ? itinerary.preferredDate.split('T')[0] : ''}
                                         min={new Date().toISOString().split('T')[0]}
-                                        onChange={(e) => !isReadOnly && setItinerary(prev => ({ ...prev, preferredDate: e.target.value }))}
-                                        disabled={isReadOnly}
-                                        className={`w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        onChange={(e) => canEditItinerary && setItinerary(prev => ({ ...prev, preferredDate: e.target.value }))}
+                                        disabled={!canEditItinerary}
+                                        className={`w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500 ${!canEditItinerary ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                             </div>
@@ -671,9 +882,9 @@ const ItineraryBuilderPage = () => {
                                         min="1"
                                         max="15"
                                         value={itinerary.numberOfPeople}
-                                        onChange={(e) => !isReadOnly && setItinerary(prev => ({ ...prev, numberOfPeople: Math.min(15, Math.max(1, parseInt(e.target.value) || 1)) }))}
-                                        disabled={isReadOnly}
-                                        className={`w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        onChange={(e) => canEditItinerary && setItinerary(prev => ({ ...prev, numberOfPeople: Math.min(15, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                                        disabled={!canEditItinerary}
+                                        className={`w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-terracotta-500 ${!canEditItinerary ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                             </div>
@@ -697,15 +908,14 @@ const ItineraryBuilderPage = () => {
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {itinerary.locations
-                                        .sort((a, b) => a.order - b.order)
+                                    {sortedLocations
                                         .map((location, index) => (
                                             <div
                                                 key={location.placeId}
-                                                draggable={!isReadOnly}
-                                                onDragStart={(e) => !isReadOnly && handleDragStart(e, index)}
-                                                onDragOver={(e) => !isReadOnly && handleDragOver(e, index)}
-                                                onDragEnd={!isReadOnly ? handleDragEnd : undefined}
+                                                draggable={canEditItinerary}
+                                                onDragStart={(e) => canEditItinerary && handleDragStart(e, index)}
+                                                onDragOver={(e) => canEditItinerary && handleDragOver(e, index)}
+                                                onDragEnd={canEditItinerary ? handleDragEnd : undefined}
                                                 className={`bg-stone-50 rounded-xl border overflow-hidden transition-all ${
                                                     draggedItem === index 
                                                         ? 'opacity-50 border-terracotta-400 scale-[0.98]' 
@@ -716,10 +926,30 @@ const ItineraryBuilderPage = () => {
                                             >
                                                 <div className="flex items-start gap-3 p-3">
                                                     <div className="flex items-center gap-2">
-                                                        {!isReadOnly && (
+                                                        {tripStarted ? (
+                                                        <button
+                                                            onClick={() => handleCompleteStop(index)}
+                                                            disabled={calculatingRoute || index !== completedStopCount || completedStopCount >= sortedLocations.length}
+                                                            className={`w-5 h-5 rounded border flex items-center justify-center text-xs font-semibold transition-colors ${
+                                                                index < completedStopCount
+                                                                    ? 'bg-sage-600 border-sage-600 text-white'
+                                                                    : index === completedStopCount
+                                                                        ? 'border-sage-500 text-sage-600 hover:bg-sage-100'
+                                                                        : 'border-stone-300 text-stone-300 cursor-not-allowed'
+                                                            } disabled:hover:bg-transparent`}
+                                                        >
+                                                            {index < completedStopCount ? '✓' : ''}
+                                                        </button>
+                                                        ) : (
+                                                        !isReadOnly && (
                                                         <GripVertical className="w-4 h-4 text-stone-400 cursor-grab active:cursor-grabbing hover:text-stone-600" />
+                                                        )
                                                         )}
-                                                        <div className="w-7 h-7 bg-terracotta-100 text-terracotta-600 rounded-full flex items-center justify-center text-sm font-semibold">
+                                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold ${
+                                                            index < completedStopCount
+                                                                ? 'bg-sage-100 text-sage-700'
+                                                                : 'bg-terracotta-100 text-terracotta-600'
+                                                        }`}>
                                                             {index + 1}
                                                         </div>
                                                     </div>
@@ -730,8 +960,17 @@ const ItineraryBuilderPage = () => {
                                                         <p className="text-xs text-stone-500 truncate">
                                                             {location.address}
                                                         </p>
+                                                        {tripStarted && (
+                                                            <p className="mt-1 text-[11px] font-medium text-sage-700">
+                                                                {index < completedStopCount
+                                                                    ? 'Completed'
+                                                                    : index === completedStopCount
+                                                                        ? 'Current stop'
+                                                                        : 'Upcoming'}
+                                                            </p>
+                                                        )}
                                                     </div>
-                                                    {!isReadOnly && (
+                                                    {canEditItinerary && (
                                                     <button
                                                         onClick={() => removeLocation(location.placeId)}
                                                         className="p-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -744,10 +983,10 @@ const ItineraryBuilderPage = () => {
                                                     <input
                                                         type="text"
                                                         value={location.notes}
-                                                        onChange={(e) => !isReadOnly && updateLocationNotes(location.placeId, e.target.value)}
-                                                        readOnly={isReadOnly}
-                                                        placeholder={isReadOnly ? '' : 'Add notes...'}
-                                                        className={`w-full px-2 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-terracotta-500 ${isReadOnly ? 'cursor-default' : ''}`}
+                                                        onChange={(e) => canEditItinerary && updateLocationNotes(location.placeId, e.target.value)}
+                                                        readOnly={!canEditItinerary}
+                                                        placeholder={!canEditItinerary ? '' : 'Add notes...'}
+                                                        className={`w-full px-2 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-terracotta-500 ${!canEditItinerary ? 'cursor-default' : ''}`}
                                                     />
                                                 </div>
                                             </div>
@@ -758,7 +997,7 @@ const ItineraryBuilderPage = () => {
                     </div>
 
                     {/* Book Guide Button - Hidden in read-only mode */}
-                    {itinerary.locations.length > 0 && id && !isReadOnly && (
+                    {itinerary.locations.length > 0 && id && canEditItinerary && (
                         <div className="p-4 border-t border-stone-200">
                             <button
                                 onClick={handleBookGuide}
@@ -781,6 +1020,41 @@ const ItineraryBuilderPage = () => {
                     )}
                 </div>
             </div>
+
+            {finishModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden">
+                        <div className="p-6 text-center">
+                            <div className="w-12 h-12 bg-sage-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Route className="w-6 h-6 text-sage-600" />
+                            </div>
+                            <h2 className="font-serif font-semibold text-stone-800 text-xl">Trip has finished</h2>
+                            <p className="text-sm text-stone-500 mt-2">
+                                You completed all {sortedLocations.length} stops. Click Pause Trip to leave route mode while keeping your progress.
+                            </p>
+                        </div>
+                        <div className="p-4 border-t border-stone-200 bg-stone-50">
+                            <button
+                                onClick={() => setFinishModalOpen(false)}
+                                className="w-full px-4 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors"
+                            >
+                                Okay
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <ConfirmationModal
+                isOpen={backWarningModalOpen}
+                onClose={() => setBackWarningModalOpen(false)}
+                onConfirm={() => setBackWarningModalOpen(false)}
+                title="Trip Ongoing"
+                message="Your trip is ongoing. Please pause the trip first before going back to the itinerary dashboard."
+                confirmText="Okay"
+                cancelText="Stay Here"
+                confirmButtonClass="bg-terracotta-600 hover:bg-terracotta-700"
+            />
 
             {/* Personalization Modal */}
             {showPersonalization && (

@@ -4,7 +4,7 @@ import User from "../models/User.js";
 import Itinerary from "../models/Itinerary.js";
 import { emitToGuide, emitToUser } from "../config/socket.js";
 
-const GUIDE_DASHBOARD_BOOKING_SELECT = "_id touristId itineraryId status timeSlot tripDetails completedAt rejectedAt createdAt";
+const GUIDE_DASHBOARD_BOOKING_SELECT = "_id touristId itineraryId status timeSlot tripDetails progress completedAt rejectedAt createdAt startedAt";
 const GUIDE_DASHBOARD_POPULATE = [
     { path: "touristId", select: "fullName email phoneNumber" },
     { path: "itineraryId", select: "name locations preferredDate numberOfPeople" },
@@ -197,7 +197,7 @@ export const getGuideDashboardData = async (req, res) => {
 
         const dashboardBookings = await Booking.find({
             guideId,
-            status: { $in: ["pending", "awaiting_payment", "scheduled", "completed", "rejected"] },
+            status: { $in: ["pending", "awaiting_payment", "scheduled", "active", "completed", "rejected"] },
         })
             .select(GUIDE_DASHBOARD_BOOKING_SELECT)
             .populate(GUIDE_DASHBOARD_POPULATE)
@@ -205,6 +205,7 @@ export const getGuideDashboardData = async (req, res) => {
 
         const pendingBookings = [];
         const scheduledBookings = [];
+        const activeBookings = [];
         const completedBookings = [];
         const rejectedBookings = [];
 
@@ -213,6 +214,8 @@ export const getGuideDashboardData = async (req, res) => {
                 pendingBookings.push(booking);
             } else if (booking.status === "awaiting_payment" || booking.status === "scheduled") {
                 scheduledBookings.push(booking);
+            } else if (booking.status === "active") {
+                activeBookings.push(booking);
             } else if (booking.status === "completed") {
                 completedBookings.push(booking);
             } else if (booking.status === "rejected") {
@@ -222,12 +225,14 @@ export const getGuideDashboardData = async (req, res) => {
 
         pendingBookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         scheduledBookings.sort((a, b) => new Date(a.tripDetails?.preferredDate) - new Date(b.tripDetails?.preferredDate));
+        activeBookings.sort((a, b) => new Date(b.startedAt || b.createdAt) - new Date(a.startedAt || a.createdAt));
         completedBookings.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
         rejectedBookings.sort((a, b) => new Date(b.rejectedAt) - new Date(a.rejectedAt));
 
         res.json({
             pendingBookings,
             scheduledBookings,
+            activeBookings,
             completedBookings,
             rejectedBookings,
             unavailableDates: req.user.unavailableDates || [],
@@ -259,8 +264,20 @@ export const startTrip = async (req, res) => {
             return res.status(403).json({ message: "You can only start your own bookings" });
         }
 
+        const itinerary = await Itinerary.findById(booking.itineraryId).select("locations");
+        const totalStops = itinerary?.locations?.length || 0;
+
+        if (totalStops === 0) {
+            return res.status(400).json({ message: "This itinerary has no stops to track" });
+        }
+
         booking.status = "active";
         booking.startedAt = new Date();
+        booking.progress = {
+            completedStopCount: 0,
+            totalStops,
+            updatedAt: new Date(),
+        };
         await booking.save();
 
         const updatedBooking = await Booking.findById(id)
@@ -418,6 +435,61 @@ export const rejectBooking = async (req, res) => {
     }
 }
 
+export const updateTripProgress = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { completedStopCount } = req.body;
+        const guideId = req.user._id;
+
+        if (!Number.isInteger(completedStopCount)) {
+            return res.status(400).json({ message: "A valid completed stop count is required" });
+        }
+
+        const booking = await Booking.findById(id).populate("itineraryId", "locations");
+
+        if (!booking) {
+            return res.status(404).json({ message: "Booking not found" });
+        }
+
+        if (booking.status !== "active") {
+            return res.status(400).json({ message: "Only active bookings can update trip progress" });
+        }
+
+        if (booking.guideId.toString() !== guideId.toString()) {
+            return res.status(403).json({ message: "You can only update your own bookings" });
+        }
+
+        const totalStops = booking.itineraryId?.locations?.length || booking.progress?.totalStops || 0;
+
+        if (totalStops === 0) {
+            return res.status(400).json({ message: "This itinerary has no stops to track" });
+        }
+
+        if (completedStopCount < 0 || completedStopCount > totalStops) {
+            return res.status(400).json({ message: "Trip progress is out of range for this itinerary" });
+        }
+
+        booking.progress = {
+            completedStopCount,
+            totalStops,
+            updatedAt: new Date(),
+        };
+        await booking.save();
+
+        const updatedBooking = await Booking.findById(id)
+            .populate("touristId", "fullName email phoneNumber")
+            .populate("itineraryId");
+
+        res.json({
+            message: "Trip progress updated",
+            booking: updatedBooking,
+        });
+    } catch (error) {
+        console.error("Update trip progress error:", error);
+        res.status(500).json({ message: "Server error updating trip progress" });
+    }
+};
+
 // @desc    Mark booking as complete (Guide only)
 // @route   PUT /api/bookings/:id/complete
 export const completeBooking = async (req, res) => {
@@ -427,18 +499,25 @@ export const completeBooking = async (req, res) => {
         const guideId = req.user._id;
         const guide = await User.findById(guideId);
 
-        const booking = await Booking.findById(id);
+        const booking = await Booking.findById(id).populate("itineraryId", "locations");
         
         if (!booking) {
             return res.status(404).json({ message: "Booking not found" });
         }
 
-        if (!["accepted", "active", "scheduled"].includes(booking.status)) {
-            return res.status(400).json({ message: "Only active or scheduled bookings can be completed" });
+        if (booking.status !== "active") {
+            return res.status(400).json({ message: "Only active bookings can be completed" });
         }
 
         if (booking.guideId.toString() !== guideId.toString()) {
             return res.status(403).json({ message: "You can only complete your own bookings" });
+        }
+
+        const totalStops = booking.progress?.totalStops || booking.itineraryId?.locations?.length || 0;
+        const completedStopCount = Math.min(booking.progress?.completedStopCount || 0, totalStops);
+
+        if (totalStops === 0 || completedStopCount < totalStops) {
+            return res.status(400).json({ message: "All itinerary stops must be completed before marking the tour as complete" });
         }
 
         booking.status = "completed";

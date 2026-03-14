@@ -86,6 +86,22 @@ const bookingSchema = new mongoose.Schema(
             preferredDate: Date,
             numberOfPeople: Number,
         },
+        progress: {
+            completedStopCount: {
+                type: Number,
+                default: 0,
+                min: 0,
+            },
+            totalStops: {
+                type: Number,
+                default: 0,
+                min: 0,
+            },
+            updatedAt: {
+                type: Date,
+                default: null,
+            },
+        },
         rejectedAt: {
             type: Date,
             default: null,

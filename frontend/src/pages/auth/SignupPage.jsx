@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Eye, EyeOff, MapPin, Mail, Lock, User, Phone, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import KenBurnsBackground from "../../components/KenBurnsBackground";
+import { getPostAuthRedirect } from "../../lib/utils";
 
 //backgrounds
 const backgrounds = [
@@ -25,6 +26,7 @@ const SignupPage = () => {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState({});
     const { register } = useAuth();
+    const location = useLocation();
     const navigate = useNavigate();
 
     // Email validation regex
@@ -110,8 +112,11 @@ const SignupPage = () => {
         try {
             await register(email, password, fullName, phoneNumber);
             toast.success("Account created successfully!");
-            // Redirect to tourist dashboard after signup
-            navigate("/dashboard");
+            const postAuthRedirect = getPostAuthRedirect(location.state);
+            navigate(
+                postAuthRedirect.path || "/dashboard",
+                postAuthRedirect.state ? { state: postAuthRedirect.state } : undefined
+            );
         } catch (error) {
             toast.error(error.response?.data?.message || "Registration failed");
         } finally {
@@ -334,7 +339,7 @@ const SignupPage = () => {
                         <div className="mt-6 text-center">
                             <p className="text-stone-600">
                                 Already have an account?{" "}
-                                <Link to="/login" className="text-amber-700 hover:text-amber-800 font-semibold">
+                                <Link to="/login" state={location.state} className="text-amber-700 hover:text-amber-800 font-semibold">
                                     Sign in
                                 </Link>
                             </p>

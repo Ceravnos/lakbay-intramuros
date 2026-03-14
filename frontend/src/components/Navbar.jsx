@@ -4,14 +4,16 @@ import { PlusIcon, LogOut, Compass, Shield, MapPin, ChevronDown, ToggleLeft, Tog
 import toast from "react-hot-toast"
 import { useAuth } from "../context/AuthContext"
 import api from "../lib/axios"
+import { buildPostAuthRedirectState, clearPostAuthItineraryHandoff, persistPostAuthItineraryHandoff } from "../lib/utils"
 
-const Navbar = () => {
+const Navbar = ({ guestAuthSessionItinerary = [] }) => {
   const { user, isAuthenticated, logout, isApprovedGuide, isGuideMode, toggleGuideMode } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [togglingMode, setTogglingMode] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const guestAuthRedirectState = buildPostAuthRedirectState(guestAuthSessionItinerary);
 
   // Fetch notifications
   useEffect(() => {
@@ -56,6 +58,15 @@ const Navbar = () => {
   const handleLogout = () => {
     logout();
     navigate("/");
+  };
+
+  const handleGuestAuthNavigation = () => {
+    if (Array.isArray(guestAuthSessionItinerary) && guestAuthSessionItinerary.length > 0) {
+      persistPostAuthItineraryHandoff(guestAuthSessionItinerary);
+      return;
+    }
+
+    clearPostAuthItineraryHandoff();
   };
 
   const handleToggleGuideMode = async () => {
@@ -293,12 +304,16 @@ const Navbar = () => {
               <>
                 <Link 
                   to="/login" 
+                  state={guestAuthRedirectState}
+                  onClick={handleGuestAuthNavigation}
                   className="px-3 py-2 text-xs sm:text-sm font-medium text-stone-700 hover:text-stone-900 transition-colors"
                 >
                   Sign in
                 </Link>
                 <Link 
                   to="/signup" 
+                  state={guestAuthRedirectState}
+                  onClick={handleGuestAuthNavigation}
                   className="px-3 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs sm:text-sm font-medium rounded-lg transition-colors"
                 >
                   Sign up

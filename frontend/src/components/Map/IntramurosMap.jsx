@@ -49,10 +49,12 @@ const libraries = ['places', 'marker'];
 
 const IntramurosMap = ({ 
     markers = [], 
+    availableLocations = INTRAMUROS_LOCATIONS,
     onMarkerClick,
     onMapClick,
     showDirections = false,
     showNumberedPins = false,
+    showLocationLabels = false,
     selectedMarkerId = null,
     interactive = true,
     className = '',
@@ -109,6 +111,22 @@ const IntramurosMap = ({
             setSelectedMarker({ ...locationData, ...matchedMarker });
         }
     }, [markers, selectedMarkerId]);
+
+    useEffect(() => {
+        if (!selectedMarker) {
+            return;
+        }
+
+        const isVisible = markers.some(marker =>
+            marker.id === selectedMarker.id || marker.placeId === selectedMarker.placeId
+        ) || availableLocations.some(location =>
+            location.id === selectedMarker.id || location.placeId === selectedMarker.placeId
+        );
+
+        if (!isVisible) {
+            setSelectedMarker(null);
+        }
+    }, [availableLocations, markers, selectedMarker]);
 
     if (loadError) {
         return (
@@ -216,7 +234,7 @@ const IntramurosMap = ({
                             zIndex={1000 + index}
                             onClick={() => handleMarkerClick({ ...locationData, ...location })}
                         />
-                        {showNumberedPins && locationData.name && (
+                        {(showNumberedPins || showLocationLabels) && locationData.name && (
                             <OverlayView
                                 key={`selected-label-${location.id || location.placeId || index}`}
                                 position={{ lat: location.lat, lng: location.lng }}
@@ -242,7 +260,14 @@ const IntramurosMap = ({
                     options={{ pixelOffset: new window.google.maps.Size(0, -20) }}
                     onCloseClick={() => setSelectedMarker(null)}
                 >
-                    <div className="min-w-[140px]">
+                    <div className="min-w-[180px] max-w-[220px]">
+                        {selectedMarker.image && (
+                            <img
+                                src={selectedMarker.image}
+                                alt={selectedMarker.name}
+                                className="mb-2 h-24 w-full rounded-md object-cover"
+                            />
+                        )}
                         <p className="font-semibold text-stone-800 text-sm">
                             {selectedMarker.name}
                         </p>
@@ -256,16 +281,34 @@ const IntramurosMap = ({
             )}
             
             {/* Render unselected location markers (hidden when trip starts) */}
-            {!tripStarted && INTRAMUROS_LOCATIONS
+            {!tripStarted && availableLocations
                 .filter(loc => !selectedPlaceIds.has(loc.id) && !selectedPlaceIds.has(loc.placeId))
                 .map((location) => (
-                    <Marker
-                        key={`unselected-${location.id}`}
-                        position={{ lat: location.lat, lng: location.lng }}
-                        icon={getMarkerIcon(location)}
-                        zIndex={100}
-                        onClick={() => handleMarkerClick(location)}
-                    />
+                    <Fragment key={`unselected-group-${location.id}`}>
+                        <Marker
+                            key={`unselected-${location.id}`}
+                            position={{ lat: location.lat, lng: location.lng }}
+                            icon={getMarkerIcon(location)}
+                            zIndex={100}
+                            onClick={() => handleMarkerClick(location)}
+                        />
+                        {showLocationLabels && location.name && (
+                            <OverlayView
+                                key={`unselected-label-${location.id}`}
+                                position={{ lat: location.lat, lng: location.lng }}
+                                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                            >
+                                <div
+                                    className="pointer-events-none"
+                                    style={{ transform: 'translate(-50%, -42px)' }}
+                                >
+                                    <div className="inline-flex items-center rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-700 shadow-sm whitespace-nowrap">
+                                        {location.name}
+                                    </div>
+                                </div>
+                            </OverlayView>
+                        )}
+                    </Fragment>
                 ))
             }
             

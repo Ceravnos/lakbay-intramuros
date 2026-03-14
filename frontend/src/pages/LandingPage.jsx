@@ -5,6 +5,7 @@ import { MapPin, Plus, X, Navigation, LogIn, ChevronRight, Trash2, Save,
 import { useAuth } from '../context/AuthContext';
 import IntramurosMap from '../components/Map/IntramurosMap';
 import Navbar from '../components/Navbar';
+import { buildPostAuthRedirectState, persistPostAuthItineraryHandoff } from '../lib/utils';
 import {
   INTRAMUROS_LOCATIONS, 
   LOCATION_CATEGORIES, 
@@ -81,6 +82,10 @@ const LandingPage = () => {
     ? INTRAMUROS_LOCATIONS 
     : INTRAMUROS_LOCATIONS.filter(loc => loc.category === selectedCategory);
 
+  const visibleItineraryLocations = selectedCategory === 'all'
+    ? sessionItinerary
+    : sessionItinerary.filter(item => item.category === selectedCategory);
+
   // Calculate total time
   const totalTime = calculateTotalTime(sessionItinerary);
 
@@ -93,18 +98,25 @@ const LandingPage = () => {
     sessionStorage.removeItem('lakbay_session_itinerary');
   }, []);
 
+  const postAuthRedirectState = buildPostAuthRedirectState(sessionItinerary);
+
+  const preparePostAuthItineraryHandoff = useCallback(() => {
+    persistPostAuthItineraryHandoff(sessionItinerary);
+  }, [sessionItinerary]);
+
   const handleSaveOrBook = () => {
+    preparePostAuthItineraryHandoff();
+
     if (isAuthenticated) {
-      // Transfer session itinerary to the builder
       navigate('/itinerary', { state: { sessionItinerary } });
     } else {
-      navigate('/login');
+      navigate('/login', { state: postAuthRedirectState });
     }
   };
 
   return (
     <div className="min-h-screen bg-stone-50">
-      <Navbar />
+      <Navbar guestAuthSessionItinerary={sessionItinerary} />
 
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-amber-800 via-amber-900 to-stone-900 relative overflow-hidden min-h-screen flex items-center">
@@ -143,6 +155,8 @@ const LandingPage = () => {
             {!isAuthenticated && (
               <Link
                 to="/signup"
+                state={postAuthRedirectState}
+                onClick={preparePostAuthItineraryHandoff}
                 className="flex items-center gap-2 px-6 sm:px-8 py-3 sm:py-4 bg-transparent border-2 border-amber-400/50 hover:border-amber-400 text-amber-200 hover:text-amber-100 font-semibold rounded-xl transition-all duration-200 text-base sm:text-lg"
               >
                 Create Account
@@ -182,31 +196,23 @@ const LandingPage = () => {
               {/* Map */}
                 <div className="relative h-[400px] sm:h-[500px] lg:h-[600px]">
                   <IntramurosMap
-                      markers={sessionItinerary.length > 0 
-                        ? sessionItinerary.map(l => ({
+                      markers={visibleItineraryLocations.map(l => ({
                             id: l.id,
+                            placeId: l.placeId,
                             name: l.name,
                             lat: l.lat,
                             lng: l.lng,
                             address: l.address,
                             description: l.description,
                             image: l.image,
-                        }))
-                        : filteredLocations.map(l => ({
-                            id: l.id,
-                            name: l.name,
-                            lat: l.lat,
-                            lng: l.lng,
-                            address: l.address,
-                            description: l.description,
-                            image: l.image,
-                        }))
-                      }
+                      }))}
+                      availableLocations={filteredLocations}
                       onMarkerClick={(marker) => {
                         const landmark = INTRAMUROS_LOCATIONS.find(l => l.id === marker.id);
                         if (landmark) addToItinerary(landmark);
                       }}
-                      showNumberedPins={sessionItinerary.length > 0}
+                      showNumberedPins={visibleItineraryLocations.length > 0}
+                      showLocationLabels={selectedCategory !== 'all'}
                       className="absolute inset-0"
                   />
                 </div>
@@ -237,15 +243,15 @@ const LandingPage = () => {
                       >
                         <Filter className="w-4 h-4" />
                         <span className="sm:hidden">
-                          {selectedCategory === 'all' ? 'Filter' : LOCATION_CATEGORIES.find(c => c.id === selectedCategory)?.name}
+                          {selectedCategory === 'all' ? 'Filter' : LOCATION_CATEGORIES[selectedCategory]?.name}
                         </span>
                         <span className="hidden sm:inline">
-                          {selectedCategory === 'all' ? 'All Categories' : LOCATION_CATEGORIES.find(c => c.id === selectedCategory)?.name}
+                          {selectedCategory === 'all' ? 'All Categories' : LOCATION_CATEGORIES[selectedCategory]?.name}
                         </span>
                       </button>
                       {showCategoryFilter && (
                         <div className="absolute right-0 sm:left-0 bottom-full mb-2 w-48 bg-white rounded-xl shadow-lg border border-stone-200 py-2 z-20">
-                          {LOCATION_CATEGORIES.map((cat) => (
+                          {Object.values(LOCATION_CATEGORIES).map((cat) => (
                             <button
                               key={cat.id}
                               onClick={() => {

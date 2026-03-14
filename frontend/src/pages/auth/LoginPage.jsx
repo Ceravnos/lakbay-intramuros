@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Eye, EyeOff, MapPin, Mail, Lock, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import KenBurnsBackground from "../../components/KenBurnsBackground";
+import { getPostAuthRedirect } from "../../lib/utils";
 
 //backgrounds
 const backgrounds = [
@@ -20,6 +21,7 @@ const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState({});
     const { login } = useAuth();
+    const location = useLocation();
     const navigate = useNavigate();
 
 
@@ -74,6 +76,7 @@ const LoginPage = () => {
     try {
       const userData = await login(email, password);
       toast.success("Welcome back!");
+      const postAuthRedirect = getPostAuthRedirect(location.state);
       // Redirect based on role
       if (userData.role === "admin") {
         navigate("/admin/dashboard");
@@ -82,7 +85,10 @@ const LoginPage = () => {
         navigate("/guide/dashboard");
       } else {
         // Tourists go to tourist dashboard
-        navigate("/dashboard");
+        navigate(
+          postAuthRedirect.path || "/dashboard",
+          postAuthRedirect.state ? { state: postAuthRedirect.state } : undefined
+        );
       }
     } catch (error) {
       toast.error(error.response?.data?.message || "Login failed");
@@ -234,7 +240,7 @@ const LoginPage = () => {
             <div className="mt-6 text-center">
               <p className="text-stone-600">
                 Don't have an account?{" "}
-                <Link to="/signup" className="text-amber-700 hover:text-amber-800 font-semibold">
+                <Link to="/signup" state={location.state} className="text-amber-700 hover:text-amber-800 font-semibold">
                   Sign up
                 </Link>
               </p>

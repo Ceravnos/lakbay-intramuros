@@ -1,5 +1,6 @@
-import { Navigate } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../context/AuthContext";
+import { readPostAuthItineraryHandoff } from "../lib/utils";
 
 // Generic protected route
 export const ProtectedRoute = ({ children }) => {
@@ -96,6 +97,10 @@ export const TouristRoute = ({ children }) => {
 // Redirect if already authenticated
 export const GuestRoute = ({ children }) => {
   const { isAuthenticated, user, isGuideMode, loading } = useAuth();
+  const location = useLocation();
+  const postAuthItineraryHandoff = location.pathname === "/login" || location.pathname === "/signup"
+      ? readPostAuthItineraryHandoff()
+      : null;
 
   if (loading) {
       return (
@@ -111,6 +116,15 @@ export const GuestRoute = ({ children }) => {
       }
       if (user?.role === "guide" && isGuideMode) {
           return <Navigate to="/guide/dashboard" replace />;
+      }
+      if (user?.role === "tourist" && postAuthItineraryHandoff?.path) {
+          return (
+              <Navigate
+                  to={postAuthItineraryHandoff.path}
+                  state={{ sessionItinerary: postAuthItineraryHandoff.sessionItinerary }}
+                  replace
+              />
+          );
       }
       return <Navigate to="/dashboard" replace />;
   }

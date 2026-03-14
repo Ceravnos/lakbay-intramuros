@@ -8,6 +8,7 @@ import {
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../lib/axios';
+import { clearPostAuthItineraryHandoff, getTransferredSessionItinerary } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import IntramurosMap from '../components/Map/IntramurosMap';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -116,23 +117,28 @@ const ItineraryBuilderPage = () => {
         if (id) {
             fetchItinerary(id);
             checkIfOngoingTour(id);
-        } else if (location.state?.sessionItinerary) {
-            // Convert session itinerary to proper format
-            const sessionLocations = location.state.sessionItinerary.map((item, index) => ({
-                placeId: item.placeId || item.id,
-                name: item.name,
-                address: item.address || '',
-                lat: item.lat,
-                lng: item.lng,
-                order: index,
-                notes: '',
-            }));
-            previousLocationsLengthRef.current = sessionLocations.length;
-            setItinerary(prev => ({ 
-                ...prev, 
-                locations: sessionLocations,
-                preferredDate: prev.preferredDate || getTodayDateInputValue(),
-            }));
+        } else {
+            const transferredSessionItinerary = getTransferredSessionItinerary(location.state);
+
+            if (transferredSessionItinerary?.length) {
+                const sessionLocations = transferredSessionItinerary.map((item, index) => ({
+                    placeId: item.placeId || item.id,
+                    name: item.name,
+                    address: item.address || '',
+                    lat: item.lat,
+                    lng: item.lng,
+                    order: index,
+                    notes: '',
+                }));
+                previousLocationsLengthRef.current = sessionLocations.length;
+                setItinerary(prev => ({ 
+                    ...prev, 
+                    locations: sessionLocations,
+                    preferredDate: prev.preferredDate || getTodayDateInputValue(),
+                }));
+            }
+
+            clearPostAuthItineraryHandoff();
         }
     }, [id, location.state]);
 

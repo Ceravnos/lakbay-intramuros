@@ -134,7 +134,7 @@ const GuideDashboard = () => {
       const handleBookingUpdate = (event) => {
           const { type } = event.detail;
           // Refresh bookings on any booking update
-          if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted' || type === 'payment-paid' || type === 'started') {
+          if (type === 'new' || type === 'accepted' || type === 'rejected' || type === 'completed' || type === 'updated' || type === 'revision-accepted' || type === 'payment-paid' || type === 'started' || type === 'cancelled') {
               fetchBookings({ background: true });
           }
       };

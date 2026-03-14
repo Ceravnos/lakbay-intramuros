@@ -103,6 +103,14 @@ export const SocketProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('booking-update', { detail: { type: 'revision-accepted', booking } }));
     });
 
+    newSocket.on('booking-cancelled', (booking) => {
+      toast('A tourist cancelled their booking.', {
+        duration: 5000,
+        icon: '❌',
+      });
+      window.dispatchEvent(new CustomEvent('booking-update', { detail: { type: 'cancelled', booking } }));
+    });
+
     newSocket.on('payment-paid', (booking) => {
       toast.success('Payment confirmed! Tour is now scheduled.', {
         duration: 5000,

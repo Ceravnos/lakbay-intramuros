@@ -56,6 +56,26 @@ const ForgotPasswordPage = () => {
         }
     };
 
+    const handleResendOtp = async () => {
+        if (!email) {
+            toast.error("Please enter your email first");
+            setStep(1);
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await forgotPassword(email);
+            setMockOtp(res.mockOtp || null);
+            setOtp("");
+            toast.success("A new OTP was sent to your email");
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to resend OTP");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleResetPassword = async (e) => {
         e.preventDefault();
         if (!newPassword || !confirmPassword) {
@@ -188,7 +208,8 @@ const ForgotPasswordPage = () => {
 
                                 <button
                                     type="button"
-                                    onClick={() => setStep(1)}
+                                    onClick={handleResendOtp}
+                                    disabled={loading}
                                     className="w-full py-2 text-amber-700 hover:text-amber-800 font-medium"
                                 >
                                     Resend OTP

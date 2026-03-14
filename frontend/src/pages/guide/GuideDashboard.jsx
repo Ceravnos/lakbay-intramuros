@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router";
 import { 
   Compass, Clock, CheckCircle, Calendar, Users, MapPin,
   RefreshCw, User, Phone, Mail, ChevronRight, ChevronLeft,
@@ -14,6 +13,7 @@ import Navbar from "../../components/Navbar"
 import ConfirmationModal from "../../components/ConfirmationModal"
 import ItineraryViewModal from "../../components/ItineraryViewModal"
 import ItineraryEditModal from "../../components/ItineraryEditModal"
+import GuideOngoingTourPanel from "../../components/GuideOngoingTourPanel"
 
 const GuideDashboard = () => {
   const { user, refreshUser } = useAuth();
@@ -21,8 +21,10 @@ const GuideDashboard = () => {
   const [scheduledSubTab, setScheduledSubTab] = useState("pending_payment");
   const [pendingBookings, setPendingBookings] = useState([]);
   const [scheduledBookings, setScheduledBookings] = useState([]);
+  const [activeBookings, setActiveBookings] = useState([]);
   const [completedBookings, setCompletedBookings] = useState([]);
   const [rejectedBookings, setRejectedBookings] = useState([]);
+  const [selectedOngoingBookingId, setSelectedOngoingBookingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [error, setError] = useState(null);
@@ -65,8 +67,6 @@ const GuideDashboard = () => {
     locomotive: { label: 'Locomotive', icon: AlertCircle },
   };
   
-  const navigate = useNavigate();
-
   const fetchBookings = useCallback(async (options = {}) => {
       const { background = false } = options;
       if (!background) {
@@ -77,14 +77,16 @@ const GuideDashboard = () => {
           const res = await api.get("/bookings/guide-dashboard");
           setPendingBookings(res.data.pendingBookings || []);
           setScheduledBookings(res.data.scheduledBookings || []);
+          setActiveBookings(res.data.activeBookings || []);
           setCompletedBookings(res.data.completedBookings || []);
           setRejectedBookings(res.data.rejectedBookings || []);
           setUnavailableDates(res.data.unavailableDates || []);
           setError(null);
+          return res.data;
       } catch (err) {
           console.error(err);
           if (background) {
-              return;
+              return null;
           }
           const errorMessage = err.response?.data?.message || "Failed to fetch bookings";
           setError(errorMessage);
@@ -99,6 +101,7 @@ const GuideDashboard = () => {
           } else {
               toast.error(errorMessage);
           }
+          return null;
       } finally {
           if (!background) {
               setLoading(false);
@@ -113,6 +116,18 @@ const GuideDashboard = () => {
   useEffect(() => {
       setUnavailableDates(user?.unavailableDates || []);
   }, [user?.unavailableDates]);
+
+  useEffect(() => {
+      if (activeBookings.length === 0) {
+          setSelectedOngoingBookingId(null);
+          return;
+      }
+
+      const hasSelectedBooking = activeBookings.some(booking => booking._id === selectedOngoingBookingId);
+      if (!hasSelectedBooking) {
+          setSelectedOngoingBookingId(activeBookings[0]._id);
+      }
+  }, [activeBookings, selectedOngoingBookingId]);
 
   // Listen for real-time booking updates via WebSocket
   useEffect(() => {
@@ -171,7 +186,7 @@ const GuideDashboard = () => {
       setUnavailableDates(res.data.unavailableDates);
       setSelectedDates([]);
       toast.success(`${selectedDates.length} date(s) marked as unavailable`);
-    } catch (err) {
+    } catch {
       toast.error('Failed to update availability');
     } finally {
       setAvailabilityLoading(false);
@@ -198,7 +213,7 @@ const GuideDashboard = () => {
       setUnavailableDates(res.data.unavailableDates);
       setSelectedDates([]);
       toast.success(`${selectedDates.length} date(s) marked as available`);
-    } catch (err) {
+    } catch {
       toast.error('Failed to update availability');
     } finally {
       setAvailabilityLoading(false);
@@ -335,7 +350,10 @@ const GuideDashboard = () => {
           toast.success("Tour marked as complete!");
           setCompleteModalOpen(false);
           setCompleteBookingId(null);
-          fetchBookings({ background: true });
+          const refreshedData = await fetchBookings({ background: true });
+          if (!refreshedData?.activeBookings?.length) {
+              setActiveTab("history");
+          }
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to complete booking");
       } finally {
@@ -353,17 +371,31 @@ const GuideDashboard = () => {
       
       setStartTripLoading(true);
       try {
-          await api.put(`/bookings/${startTripBookingId}/start`);
+          const res = await api.put(`/bookings/${startTripBookingId}/start`);
+          setSelectedOngoingBookingId(res.data.booking?._id || startTripBookingId);
+          setActiveTab("ongoing");
           toast.success("Trip started successfully!");
           setStartTripModalOpen(false);
           setStartTripBookingId(null);
-          fetchBookings({ background: true });
+          await fetchBookings({ background: true });
       } catch (error) {
           toast.error(error.response?.data?.message || "Failed to start trip");
       } finally {
           setStartTripLoading(false);
       }
   };
+
+  const handleOngoingBookingUpdate = useCallback((updatedBooking) => {
+      if (!updatedBooking?._id) {
+          return;
+      }
+
+      setActiveBookings(prevBookings =>
+          prevBookings.map(booking =>
+              booking._id === updatedBooking._id ? updatedBooking : booking
+          )
+      );
+  }, []);
 
 
   const formatDate = (date) => {
@@ -398,10 +430,15 @@ const GuideDashboard = () => {
       ].sort((a, b) => new Date(b.completedAt || b.rejectedAt) - new Date(a.completedAt || a.rejectedAt)),
       [completedBookings, rejectedBookings]
   );
+  const selectedOngoingBooking = useMemo(
+      () => activeBookings.find(booking => booking._id === selectedOngoingBookingId) || activeBookings[0] || null,
+      [activeBookings, selectedOngoingBookingId]
+  );
 
   const stats = {
       pending: pendingBookings.length,
       scheduled: scheduledBookings.length,
+      ongoing: activeBookings.length,
       pendingPayment: pendingPaymentBookings.length,
       confirmed: confirmedBookings.length,
       completed: completedBookings.length,
@@ -465,6 +502,22 @@ const GuideDashboard = () => {
                           {stats.scheduled > 0 && (
                               <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
                                   {stats.scheduled}
+                              </span>
+                          )}
+                      </button>
+                      <button
+                          onClick={() => setActiveTab("ongoing")}
+                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-colors ${
+                              activeTab === "ongoing"
+                                  ? "text-sage-700 border-b-2 border-sage-700 bg-sage-50"
+                                  : "text-stone-500 hover:text-stone-700 hover:bg-stone-50"
+                          }`}
+                      >
+                          <Compass className="w-4 h-4" />
+                          Ongoing Tour
+                          {stats.ongoing > 0 && (
+                              <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
+                                  {stats.ongoing}
                               </span>
                           )}
                       </button>
@@ -766,19 +819,52 @@ const GuideDashboard = () => {
                                                                           </>
                                                                       )}
                                                                   </button>
-                                                                  <button
-                                                                      onClick={() => openCompleteModal(booking._id)}
-                                                                      disabled={actionLoading === booking._id}
-                                                                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-stone-600 hover:bg-stone-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-                                                                  >
-                                                                      <CheckCircle className="w-4 h-4" />
-                                                                      Complete
-                                                                  </button>
                                                               </div>
                                                           </div>
                                                       </div>
                                                   ))
                                               )}
+                                          </div>
+                                      )}
+                                  </div>
+                              )}
+
+                              {activeTab === "ongoing" && (
+                                  <div>
+                                      {activeBookings.length === 0 ? (
+                                          <div className="text-center py-12">
+                                              <Compass className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                                              <p className="text-stone-500">No ongoing tours</p>
+                                              <p className="text-stone-400 text-sm mt-1">
+                                                  Start a scheduled booking and it will appear here for live itinerary tracking
+                                              </p>
+                                          </div>
+                                      ) : (
+                                          <div className="space-y-6">
+                                              {activeBookings.length > 1 && (
+                                                  <div className="flex flex-wrap gap-2">
+                                                      {activeBookings.map((booking) => (
+                                                          <button
+                                                              key={booking._id}
+                                                              onClick={() => setSelectedOngoingBookingId(booking._id)}
+                                                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                                  selectedOngoingBooking?._id === booking._id
+                                                                      ? "bg-sage-600 text-white"
+                                                                      : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                                              }`}
+                                                          >
+                                                              {booking.tripDetails?.title}
+                                                          </button>
+                                                      ))}
+                                                  </div>
+                                              )}
+
+                                              <GuideOngoingTourPanel
+                                                  booking={selectedOngoingBooking}
+                                                  onBookingUpdate={handleOngoingBookingUpdate}
+                                                  onOpenCompleteModal={openCompleteModal}
+                                                  completeLoading={completeLoading && completeBookingId === selectedOngoingBooking?._id}
+                                              />
                                           </div>
                                       )}
                                   </div>

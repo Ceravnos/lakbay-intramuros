@@ -11,6 +11,7 @@ import {
     rejectBooking,
     completeBooking,
     startTrip,
+    updateTripProgress,
     getMyBookings,
     cancelBooking,
     deleteBooking,
@@ -47,6 +48,7 @@ router.put("/:id/accept", approvedGuideOnly, acceptBooking);
 router.put("/:id/reject", approvedGuideOnly, rejectBooking);
 router.put("/:id/revision", approvedGuideOnly, requestRevision);
 router.put("/:id/start", approvedGuideOnly, startTrip);
+router.put("/:id/progress", approvedGuideOnly, updateTripProgress);
 
 router.put("/:id/complete", approvedGuideOnly, completeBooking);
 

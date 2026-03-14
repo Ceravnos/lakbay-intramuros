@@ -12,6 +12,7 @@ import { clearPostAuthItineraryHandoff, getTransferredSessionItinerary } from '.
 import { useAuth } from '../context/AuthContext';
 import IntramurosMap from '../components/Map/IntramurosMap';
 import ConfirmationModal from '../components/ConfirmationModal';
+import RevisionReviewModal from '../components/RevisionReviewModal';
 import { 
     INTRAMUROS_LOCATIONS, 
     LOCATION_CATEGORIES, 
@@ -57,6 +58,13 @@ const clearTripProgress = (itineraryId) => {
 };
 
 const getTodayDateInputValue = () => new Date().toISOString().split('T')[0];
+const getBookingItineraryId = (booking) => booking?.itineraryId?._id || booking?.itineraryId;
+const normalizeLocations = (locations = []) =>
+    locations.map((location, index) => ({
+        ...location,
+        order: typeof location.order === 'number' ? location.order : index,
+        notes: location.notes || '',
+    }));
 
 const ItineraryBuilderPage = () => {
     const { id } = useParams();
@@ -101,9 +109,38 @@ const ItineraryBuilderPage = () => {
     // Read-only mode for ongoing tours
     const [isReadOnly, setIsReadOnly] = useState(false);
     const [activeBooking, setActiveBooking] = useState(null);
+    const [revisionBooking, setRevisionBooking] = useState(null);
+    const [revisionModalOpen, setRevisionModalOpen] = useState(false);
+    const [revisionPreviewApplied, setRevisionPreviewApplied] = useState(false);
+    const [acceptRevisionLoading, setAcceptRevisionLoading] = useState(false);
+    const [cancelRevisionLoading, setCancelRevisionLoading] = useState(false);
     const [backWarningModalOpen, setBackWarningModalOpen] = useState(false);
     const previousLocationsLengthRef = useRef(itinerary.locations.length);
     const tripProgressHydratedRef = useRef(false);
+    const loadItineraryIntoBuilder = useCallback((nextItinerary, options = {}) => {
+        if (!nextItinerary) return;
+
+        const { resetProgress = false } = options;
+        const normalizedLocations = normalizeLocations(nextItinerary.locations || []);
+
+        previousLocationsLengthRef.current = normalizedLocations.length;
+
+        if (resetProgress) {
+            setDirectionsResult(null);
+            setTripStarted(false);
+            setCompletedStopCount(0);
+            setFinishModalOpen(false);
+            clearTripProgress(id);
+        }
+
+        setItinerary(prev => ({
+            ...prev,
+            ...nextItinerary,
+            locations: normalizedLocations,
+            preferredDate: nextItinerary.preferredDate || prev.preferredDate,
+            numberOfPeople: nextItinerary.numberOfPeople || prev.numberOfPeople || 1,
+        }));
+    }, [id]);
 
     // Load existing itinerary or session data
     useEffect(() => {
@@ -111,25 +148,31 @@ const ItineraryBuilderPage = () => {
         setTripStarted(false);
         setCompletedStopCount(0);
         setFinishModalOpen(false);
+        setRevisionBooking(null);
+        setRevisionModalOpen(false);
+        setRevisionPreviewApplied(false);
         tripProgressHydratedRef.current = !id;
         previousLocationsLengthRef.current = 0;
 
         if (id) {
             fetchItinerary(id);
-            checkIfOngoingTour(id);
+            fetchBookingContext(id, {
+                openRevisionModal: Boolean(location.state?.revisionBookingId || location.state?.openRevisionModal),
+            });
         } else {
             const transferredSessionItinerary = getTransferredSessionItinerary(location.state);
 
             if (transferredSessionItinerary?.length) {
-                const sessionLocations = transferredSessionItinerary.map((item, index) => ({
-                    placeId: item.placeId || item.id,
-                    name: item.name,
-                    address: item.address || '',
-                    lat: item.lat,
-                    lng: item.lng,
-                    order: index,
-                    notes: '',
-                }));
+                const sessionLocations = normalizeLocations(
+                    transferredSessionItinerary.map((item) => ({
+                        placeId: item.placeId || item.id,
+                        name: item.name,
+                        address: item.address || '',
+                        lat: item.lat,
+                        lng: item.lng,
+                        notes: '',
+                    }))
+                );
                 previousLocationsLengthRef.current = sessionLocations.length;
                 setItinerary(prev => ({ 
                     ...prev, 
@@ -146,10 +189,15 @@ const ItineraryBuilderPage = () => {
         setLoading(true);
         try {
             const res = await api.get(`/itineraries/${itineraryId}`);
-            setItinerary(res.data);
+            const nextItinerary = {
+                ...res.data,
+                locations: normalizeLocations(res.data.locations || []),
+            };
+
+            setItinerary(nextItinerary);
 
             const savedProgress = readTripProgressMap()[itineraryId];
-            const totalStops = res.data.locations?.length || 0;
+            const totalStops = nextItinerary.locations.length || 0;
             const restoredCompletedStopCount = Math.min(savedProgress?.completedStopCount || 0, totalStops);
 
             previousLocationsLengthRef.current = totalStops;
@@ -165,27 +213,30 @@ const ItineraryBuilderPage = () => {
         }
     };
 
-    const checkIfOngoingTour = async (itineraryId) => {
+    const fetchBookingContext = useCallback(async (itineraryId, options = {}) => {
+        const { openRevisionModal = false } = options;
+
         try {
-            const res = await api.get('/bookings/my-bookings');
-            const activeBookingFound = res.data.find(
-                b => {
-                    const bookingItineraryId = b.itineraryId?._id || b.itineraryId;
-                    return bookingItineraryId === itineraryId && ['pending', 'accepted', 'awaiting_payment', 'paid'].includes(b.status);
+            const res = await api.get(`/bookings/itinerary/${itineraryId}/context`);
+            const activeBookingFound = res.data?.booking || null;
+
+            setIsReadOnly(Boolean(activeBookingFound));
+            setActiveBooking(activeBookingFound);
+
+            if (activeBookingFound?.revisionRequested) {
+                setRevisionBooking(activeBookingFound);
+                if (openRevisionModal) {
+                    setRevisionModalOpen(true);
                 }
-            );
-            if (activeBookingFound) {
-                setIsReadOnly(true);
-                setActiveBooking(activeBookingFound);
             } else {
-                // Reset read-only state if no active booking
-                setIsReadOnly(false);
-                setActiveBooking(null);
+                setRevisionBooking(null);
+                setRevisionModalOpen(false);
+                setRevisionPreviewApplied(false);
             }
         } catch (error) {
             console.error('Failed to check ongoing tour:', error);
         }
-    };
+    }, []);
 
     const handleBookGuide = async () => {
         if (!itinerary.preferredDate) {
@@ -220,6 +271,104 @@ const ItineraryBuilderPage = () => {
             setBookingRedirectLoading(false);
         }
     };
+
+    const handleReviewRevision = useCallback((booking) => {
+        if (!booking?.proposedItinerary) {
+            toast.error('No proposed itinerary available to review');
+            return;
+        }
+
+        loadItineraryIntoBuilder(
+            {
+                ...itinerary,
+                locations: booking.proposedItinerary.locations?.length > 0
+                    ? booking.proposedItinerary.locations
+                    : itinerary.locations,
+                preferredDate: booking.proposedItinerary.preferredDate || itinerary.preferredDate,
+                numberOfPeople: booking.proposedItinerary.numberOfPeople || itinerary.numberOfPeople,
+            },
+            { resetProgress: true }
+        );
+        setRevisionPreviewApplied(true);
+        setRevisionModalOpen(false);
+        toast.success('Guide changes loaded on the map');
+    }, [itinerary, loadItineraryIntoBuilder]);
+
+    const handleAcceptRevision = async () => {
+        if (!revisionBooking?._id) return;
+
+        setAcceptRevisionLoading(true);
+        try {
+            const res = await api.put(`/bookings/${revisionBooking._id}/accept-revision`);
+            const updatedBooking = res.data.booking;
+
+            loadItineraryIntoBuilder(updatedBooking.itineraryId, { resetProgress: true });
+            setActiveBooking(updatedBooking);
+            setIsReadOnly(true);
+            setRevisionBooking(null);
+            setRevisionModalOpen(false);
+            setRevisionPreviewApplied(false);
+            toast.success('Revision accepted! Booking moved to awaiting payment.');
+            window.dispatchEvent(new CustomEvent('booking-update', {
+                detail: { type: 'revision-accepted', booking: updatedBooking },
+            }));
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to accept revision');
+        } finally {
+            setAcceptRevisionLoading(false);
+        }
+    };
+
+    const handleCancelRevisionBooking = async () => {
+        if (!revisionBooking?._id) return;
+
+        setCancelRevisionLoading(true);
+        try {
+            const res = await api.put(`/bookings/${revisionBooking._id}/cancel`);
+            const updatedBooking = res.data.booking;
+
+            loadItineraryIntoBuilder(updatedBooking.itineraryId, { resetProgress: true });
+            setIsReadOnly(false);
+            setActiveBooking(null);
+            setRevisionBooking(null);
+            setRevisionModalOpen(false);
+            setRevisionPreviewApplied(false);
+            toast.success('Booking cancelled');
+            window.dispatchEvent(new CustomEvent('booking-update', {
+                detail: { type: 'cancelled', booking: updatedBooking },
+            }));
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to cancel booking');
+        } finally {
+            setCancelRevisionLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!id) return;
+
+        const handleBookingUpdate = (event) => {
+            const { type, booking } = event.detail || {};
+            const bookingItineraryId = getBookingItineraryId(booking);
+
+            if (bookingItineraryId && bookingItineraryId !== id) {
+                return;
+            }
+
+            if ((type === 'cancelled' || type === 'revision-accepted') && booking?.itineraryId) {
+                loadItineraryIntoBuilder(booking.itineraryId, { resetProgress: true });
+            }
+
+            fetchBookingContext(id, {
+                openRevisionModal: type === 'revision' && bookingItineraryId === id,
+            });
+        };
+
+        window.addEventListener('booking-update', handleBookingUpdate);
+        return () => {
+            window.removeEventListener('booking-update', handleBookingUpdate);
+        };
+    }, [fetchBookingContext, id, loadItineraryIntoBuilder]);
 
     const handleBackNavigation = () => {
         if (tripStarted) {
@@ -349,6 +498,7 @@ const ItineraryBuilderPage = () => {
 
     const sortedLocations = [...itinerary.locations].sort((a, b) => a.order - b.order);
     const canEditItinerary = !isReadOnly && !tripStarted;
+    const isRevisionReviewMode = Boolean(revisionBooking?._id && revisionBooking.revisionRequested);
     const hasTrackedProgress = tripStarted || completedStopCount > 0;
     const progressPercentage = sortedLocations.length > 0
         ? Math.round((completedStopCount / sortedLocations.length) * 100)
@@ -592,14 +742,17 @@ const ItineraryBuilderPage = () => {
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-sage-800">
-                                    {activeBooking.status === 'paid' ? 'Tour Paid' 
+                                    {isRevisionReviewMode ? 'Revision Requested'
+                                        : activeBooking.status === 'paid' ? 'Tour Paid' 
                                         : activeBooking.status === 'awaiting_payment' ? 'Awaiting Payment'
                                         : activeBooking.status === 'accepted' ? 'Tour in Progress' 
                                         : 'Booking Pending'}
                                 </p>
                                 {activeBooking.status !== 'paid' && (
                                 <p className="text-xs text-sage-600">
-                                    {activeBooking.status === 'awaiting_payment'
+                                    {isRevisionReviewMode
+                                        ? `${activeBooking.guideId?.fullName || 'Your guide'} asked you to review itinerary changes before the booking moves to payment.`
+                                        : activeBooking.status === 'awaiting_payment'
                                         ? `Waiting for payment to confirm tour with ${activeBooking.guideId?.fullName || 'your guide'}`
                                         : activeBooking.status === 'accepted'
                                         ? `This itinerary is currently being used for an active tour with ${activeBooking.guideId?.fullName || 'your guide'}`
@@ -834,6 +987,18 @@ const ItineraryBuilderPage = () => {
                                 )}
                             </div>
                         )}
+                        {isRevisionReviewMode && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                                <p className="text-sm font-medium text-amber-800">
+                                    {revisionPreviewApplied ? 'Reviewing guide changes on the map' : 'Guide changes ready for review'}
+                                </p>
+                                <p className="mt-1 text-xs text-amber-700">
+                                    {revisionPreviewApplied
+                                        ? 'Use Accept to confirm the revised itinerary and move this booking to awaiting payment, or Cancel to drop the booking.'
+                                        : 'Open the revision modal to review the guide’s proposed route before accepting or cancelling the booking.'}
+                                </p>
+                            </div>
+                        )}
                         
                         {/* Trip Stats */}
                         <div className="flex items-center gap-3 mt-3 text-xs text-stone-500">
@@ -1003,7 +1168,53 @@ const ItineraryBuilderPage = () => {
                     </div>
 
                     {/* Book Guide Button - Hidden in read-only mode */}
-                    {itinerary.locations.length > 0 && id && canEditItinerary && (
+                    {itinerary.locations.length > 0 && id && isRevisionReviewMode && (
+                        <div className="p-4 border-t border-stone-200 space-y-2">
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={handleCancelRevisionBooking}
+                                    disabled={cancelRevisionLoading || acceptRevisionLoading}
+                                    className="flex items-center justify-center gap-2 px-4 py-3 border border-red-300 text-red-600 font-medium rounded-lg hover:bg-red-50 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {cancelRevisionLoading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Cancelling...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <X className="w-4 h-4" />
+                                            Cancel
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={handleAcceptRevision}
+                                    disabled={acceptRevisionLoading || cancelRevisionLoading}
+                                    className="flex items-center justify-center gap-2 px-4 py-3 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {acceptRevisionLoading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Accepting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Users className="w-4 h-4" />
+                                            Accept
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => setRevisionModalOpen(true)}
+                                className="w-full text-xs font-medium text-sage-700 hover:text-sage-800 transition-colors"
+                            >
+                                Re-open revision summary
+                            </button>
+                        </div>
+                    )}
+                    {itinerary.locations.length > 0 && id && !isRevisionReviewMode && canEditItinerary && (
                         <div className="p-4 border-t border-stone-200">
                             <button
                                 onClick={handleBookGuide}
@@ -1060,6 +1271,13 @@ const ItineraryBuilderPage = () => {
                 confirmText="Okay"
                 cancelText="Stay Here"
                 confirmButtonClass="bg-terracotta-600 hover:bg-terracotta-700"
+            />
+
+            <RevisionReviewModal
+                isOpen={revisionModalOpen}
+                onClose={() => setRevisionModalOpen(false)}
+                booking={revisionBooking}
+                onReview={handleReviewRevision}
             />
 
             {/* Personalization Modal */}

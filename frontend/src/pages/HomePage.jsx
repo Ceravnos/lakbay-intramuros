@@ -122,6 +122,7 @@ const HomePage = () => {
     const [deleteItineraryId, setDeleteItineraryId] = useState(null);
     const [deleteItineraryLoading, setDeleteItineraryLoading] = useState(false);
     const [ratingSubmitting, setRatingSubmitting] = useState(false);
+    const [dismissedRatingBookingIds, setDismissedRatingBookingIds] = useState([]);
     const [paymentLoading, setPaymentLoading] = useState(null);
     
     // Revision review modal state
@@ -132,14 +133,43 @@ const HomePage = () => {
     const [showAllBookings, setShowAllBookings] = useState(false);
     const [showAllItineraries, setShowAllItineraries] = useState(false);
 
+    const upsertBooking = useCallback((nextBooking) => {
+        if (!nextBooking?._id) return;
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
+        setMyBookings(prevBookings => {
+            const existingBooking = prevBookings.find(booking => booking._id === nextBooking._id);
+
+            if (!existingBooking) {
+                return [nextBooking, ...prevBookings];
+            }
+
+            return prevBookings.map(booking =>
+                booking._id === nextBooking._id
+                    ? {
+                        ...booking,
+                        ...nextBooking,
+                        guideId: nextBooking.guideId || booking.guideId,
+                        itineraryId: nextBooking.itineraryId || booking.itineraryId,
+                        tripDetails: nextBooking.tripDetails || booking.tripDetails,
+                        progress: nextBooking.progress || booking.progress,
+                        proposedItinerary: nextBooking.proposedItinerary || booking.proposedItinerary,
+                    }
+                    : booking
+            );
+        });
+    }, []);
+
+    const fetchData = useCallback(async ({ background = false } = {}) => {
+        if (!background) {
+            setLoading(true);
+        }
         try {
-            const itinerariesRes = await api.get("/itineraries");
-            setItineraries(itinerariesRes.data);
+            const [itinerariesRes, bookingsRes] = await Promise.all([
+                api.get("/itineraries"),
+                api.get("/bookings/my-bookings"),
+            ]);
 
-            const bookingsRes = await api.get("/bookings/my-bookings");
+            setItineraries(itinerariesRes.data);
             setMyBookings(bookingsRes.data);
 
             setIsRateLimited(false);
@@ -149,7 +179,9 @@ const HomePage = () => {
                 setIsRateLimited(true);
             }
         } finally {
-            setLoading(false);
+            if (!background) {
+                setLoading(false);
+            }
         }
     }, []);
 
@@ -162,10 +194,18 @@ const HomePage = () => {
                 rating
             });
 
+            setMyBookings(prevBookings =>
+                prevBookings.map(booking =>
+                    booking._id === ratingBooking._id
+                        ? { ...booking, isRated: true }
+                        : booking
+                )
+            );
+            setDismissedRatingBookingIds(prevIds => prevIds.filter(id => id !== ratingBooking._id));
             toast.success("Thanks for your feedback!");
             setShowRatingPrompt(false);
             setRatingBooking(null);
-            fetchData();
+            fetchData({ background: true });
         } catch (error) {
             console.error("Rating submission error:", error);
             toast.error(error.response?.data?.message || "Failed to submit rating");
@@ -178,6 +218,23 @@ const HomePage = () => {
     useEffect(() => {
         fetchData();
     }, [isAuthenticated, user, fetchData]);
+
+    useEffect(() => {
+        if (showRatingPrompt) {
+            return;
+        }
+
+        const pendingRatingBooking = myBookings.find(booking =>
+            booking.status === 'completed' &&
+            !booking.isRated &&
+            !dismissedRatingBookingIds.includes(booking._id)
+        );
+
+        if (pendingRatingBooking) {
+            setRatingBooking(pendingRatingBooking);
+            setShowRatingPrompt(true);
+        }
+    }, [dismissedRatingBookingIds, myBookings, showRatingPrompt]);
 
     // Handle payment return from PayMongo checkout
     useEffect(() => {
@@ -193,7 +250,7 @@ const HomePage = () => {
                     } catch (error) {
                         // Silent - socket event will handle notification
                     }
-                    fetchData();
+                    fetchData({ background: true });
                 };
                 verifyPayment();
             } else if (paymentStatus === 'cancelled') {
@@ -207,20 +264,25 @@ const HomePage = () => {
     // Listen for real-time booking updates via WebSocket
     useEffect(() => {
         const handleBookingUpdate = (event) => {
-            const { type, booking } = event.detail;
-            // Refresh bookings on any update
-            fetchData();
+            const { type, booking } = event.detail || {};
+
+            if (booking?._id) {
+                upsertBooking(booking);
+            } else {
+                fetchData({ background: true });
+            }
             
             // Show rating prompt when tour is completed
             if (type === 'completed' && booking && !booking.isRated) {
+                setDismissedRatingBookingIds(prevIds => prevIds.filter(id => id !== booking._id));
                 setRatingBooking(booking);
                 setShowRatingPrompt(true);
             }
             
             // Show revision review modal when guide requests revision
             if (type === 'revision' && booking) {
-                setRevisionBooking(booking);
-                setRevisionModalOpen(true);
+                setRevisionBooking(null);
+                setRevisionModalOpen(false);
             }
         };
 
@@ -228,7 +290,7 @@ const HomePage = () => {
         return () => {
             window.removeEventListener('booking-update', handleBookingUpdate);
         };
-    }, [fetchData]);
+    }, [fetchData, upsertBooking]);
 
     // Open revision modal for a specific booking (called from notification click)
     const openRevisionModal = (booking) => {
@@ -255,11 +317,11 @@ const HomePage = () => {
     const handleAcceptRevision = async (bookingId) => {
         setAcceptRevisionLoading(true);
         try {
-            await api.put(`/bookings/${bookingId}/accept-revision`);
+            const res = await api.put(`/bookings/${bookingId}/accept-revision`);
             toast.success("Revision accepted! Your itinerary has been updated.");
             setRevisionModalOpen(false);
             setRevisionBooking(null);
-            fetchData();
+            upsertBooking(res.data.booking);
         } catch (error) {
             toast.error(error.response?.data?.message || "Failed to accept revision");
         } finally {
@@ -271,11 +333,11 @@ const HomePage = () => {
     const handleCancelRevisionBooking = async (bookingId) => {
         setCancelRevisionLoading(true);
         try {
-            await api.put(`/bookings/${bookingId}/cancel`);
+            const res = await api.put(`/bookings/${bookingId}/cancel`);
             toast.success("Booking cancelled");
             setRevisionModalOpen(false);
             setRevisionBooking(null);
-            fetchData();
+            upsertBooking(res.data.booking);
         } catch (error) {
             toast.error(error.response?.data?.message || "Failed to cancel booking");
         } finally {
@@ -317,12 +379,11 @@ const HomePage = () => {
         
         setCancelLoading(true);
         try {
-            await api.put(`/bookings/${cancelBookingId}/cancel`);
+            const res = await api.put(`/bookings/${cancelBookingId}/cancel`);
             toast.success("Booking cancelled");
-            setMyBookings(prev => prev.filter(item => item._id !== cancelBookingId));
+            upsertBooking(res.data.booking);
             setCancelModalOpen(false);
             setCancelBookingId(null);
-            fetchData();
         } catch (error) {
             toast.error("Failed to cancel booking");
         } finally {
@@ -345,7 +406,6 @@ const HomePage = () => {
             setMyBookings(prev => prev.filter(item => item._id !== deleteBookingId));
             setDeleteBookingModalOpen(false);
             setDeleteBookingId(null);
-            fetchData();
         } catch (error) {
             toast.error(error.response?.data?.message || "Failed to delete booking");
         } finally {
@@ -766,6 +826,13 @@ const HomePage = () => {
             <RatingModal
                 booking={ratingBooking}
                 onClose={() => {
+                    if (ratingBooking?._id) {
+                        setDismissedRatingBookingIds(prevIds =>
+                            prevIds.includes(ratingBooking._id)
+                                ? prevIds
+                                : [...prevIds, ratingBooking._id]
+                        );
+                    }
                     setShowRatingPrompt(false);
                     setRatingBooking(null);
                 }}

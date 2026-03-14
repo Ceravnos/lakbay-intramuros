@@ -152,7 +152,7 @@ const ItineraryViewModal = ({
                     </div>
 
                     {/* Revision Request Section */}
-                    {onEditItinerary && (
+                    {onEditItinerary && booking.status === 'pending' && (
                         <div className="bg-sage-50 border border-sage-200 rounded-xl p-4">
                             <h4 className="font-medium text-stone-800 flex items-center gap-2 mb-2">
                                 <MessageSquare className="w-4 h-4 text-sage-600" />

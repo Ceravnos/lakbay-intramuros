@@ -122,6 +122,8 @@ bookingSchema.index({ guideId: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ guideId: 1, status: 1, "tripDetails.preferredDate": 1 });
 bookingSchema.index({ guideId: 1, timeSlot: 1, "tripDetails.preferredDate": 1, status: 1 });
 bookingSchema.index({ touristId: 1, itineraryId: 1, status: 1 });
+bookingSchema.index({ touristId: 1, createdAt: -1 });
+bookingSchema.index({ touristId: 1, itineraryId: 1, status: 1, createdAt: -1 });
 
 const Booking = mongoose.model("Booking", bookingSchema);
 

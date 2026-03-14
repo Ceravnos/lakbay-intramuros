@@ -27,7 +27,7 @@ const Navbar = ({ guestAuthSessionItinerary = [] }) => {
     const handleBookingUpdate = (event) => {
       const { type } = event.detail;
       // Refresh notifications on relevant updates
-      if (type === 'revision' || type === 'new' || type === 'accepted' || type === 'rejected') {
+      if (type) {
         fetchNotifications();
       }
     };
@@ -178,10 +178,18 @@ const Navbar = ({ guestAuthSessionItinerary = [] }) => {
                                   key={booking._id}
                                   onClick={() => {
                                     setShowNotifications(false);
-                                    // Dispatch event to open revision modal
-                                    window.dispatchEvent(new CustomEvent('open-revision-modal', { 
-                                      detail: { booking } 
-                                    }));
+                                    const itineraryId = booking.itineraryId?._id || booking.itineraryId;
+                                    if (!itineraryId) {
+                                      toast.error('Could not open this itinerary');
+                                      return;
+                                    }
+
+                                    navigate(`/itinerary/${itineraryId}`, {
+                                      state: {
+                                        revisionBookingId: booking._id,
+                                        openRevisionModal: true,
+                                      },
+                                    });
                                   }}
                                   className="w-full text-left block px-4 py-3 hover:bg-stone-50 border-b border-stone-100 last:border-0"
                                 >

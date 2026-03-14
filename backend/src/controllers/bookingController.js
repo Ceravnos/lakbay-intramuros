@@ -9,6 +9,12 @@ const GUIDE_DASHBOARD_POPULATE = [
     { path: "touristId", select: "fullName email phoneNumber" },
     { path: "itineraryId", select: "name locations preferredDate numberOfPeople" },
 ];
+const TOURIST_BOOKING_SELECT = "_id touristId guideId itineraryId status timeSlot tripDetails revisionRequested revisionNote proposedItinerary progress isRated startedAt acceptedAt completedAt rejectedAt createdAt updatedAt";
+const TOURIST_BOOKING_POPULATE = [
+    { path: "guideId", select: "fullName email phoneNumber profilePicture" },
+    { path: "itineraryId", select: "name locations preferredDate numberOfPeople description" },
+];
+const ITINERARY_CONTEXT_STATUSES = ["pending", "accepted", "awaiting_payment", "paid", "scheduled", "active"];
 
 // @desc    Create a new booking request (Tourist only)
 // @route   POST /api/bookings
@@ -376,7 +382,8 @@ export const acceptBooking = async (req, res) => {
 
         const updatedBooking = await Booking.findById(id)
             .populate("touristId", "fullName email phoneNumber")
-            .populate("itineraryId");
+            .populate("guideId", "fullName profilePicture")
+            .populate("itineraryId", "name locations preferredDate numberOfPeople");
 
         // Emit socket event to notify the tourist
         emitToUser(booking.touristId.toString(), "booking-accepted", updatedBooking);
@@ -523,11 +530,12 @@ export const completeBooking = async (req, res) => {
         booking.status = "completed";
         booking.completedAt = new Date();
         await booking.save();
-        await booking.populate("guideId", "fullName");
+        await booking.populate("guideId", "fullName profilePicture");
 
         const updatedBooking = await Booking.findById(id)
             .populate("touristId", "fullName email phoneNumber")
-            .populate("itineraryId");
+            .populate("guideId", "fullName profilePicture")
+            .populate("itineraryId", "name locations preferredDate numberOfPeople");
 
         // Emit socket event to notify the tourist
         emitToUser(booking.touristId.toString(), "booking-completed", updatedBooking);
@@ -543,6 +551,28 @@ export const completeBooking = async (req, res) => {
     }
 };
 
+export const getItineraryBookingContext = async (req, res) => {
+    try {
+        const touristId = req.user._id;
+        const { itineraryId } = req.params;
+
+        const booking = await Booking.findOne({
+            touristId,
+            itineraryId,
+            status: { $in: ITINERARY_CONTEXT_STATUSES },
+        })
+            .select(TOURIST_BOOKING_SELECT)
+            .populate(TOURIST_BOOKING_POPULATE)
+            .sort({ createdAt: -1 })
+            .lean();
+
+        res.json({ booking });
+    } catch (error) {
+        console.error("Get itinerary booking context error:", error);
+        res.status(500).json({ message: "Server error fetching itinerary booking context" });
+    }
+};
+
 // @desc    Get tourist's own bookings
 // @route   GET /api/bookings/my-bookings
 export const getMyBookings = async (req, res) => {
@@ -550,9 +580,10 @@ export const getMyBookings = async (req, res) => {
         const touristId = req.user._id;
         
         const bookings = await Booking.find({ touristId })
-            .populate("guideId", "fullName email")
-            .populate("itineraryId")
-            .sort({ createdAt: -1 });
+            .select(TOURIST_BOOKING_SELECT)
+            .populate(TOURIST_BOOKING_POPULATE)
+            .sort({ createdAt: -1 })
+            .lean();
 
         res.json(bookings);
     } catch (error) {
@@ -583,11 +614,23 @@ export const cancelBooking = async (req, res) => {
         }
 
         booking.status = "cancelled";
+        booking.revisionRequested = false;
+        booking.revisionNote = "";
+        booking.proposedItinerary = undefined;
         await booking.save();
+
+        const updatedBooking = await Booking.findById(id)
+            .populate("touristId", "fullName email phoneNumber")
+            .populate("guideId", "fullName email profilePicture")
+            .populate("itineraryId", "name locations preferredDate numberOfPeople");
+
+        if (booking.guideId) {
+            emitToGuide(booking.guideId.toString(), "booking-cancelled", updatedBooking);
+        }
 
         res.json({
             message: "Booking cancelled successfully",
-            booking,
+            booking: updatedBooking,
         });
     } catch (error) {
         console.error("Cancel booking error:", error);
@@ -799,6 +842,8 @@ export const acceptRevision = async (req, res) => {
         await itinerary.save();
 
         // Clear revision request
+        booking.status = "awaiting_payment";
+        booking.acceptedAt = booking.acceptedAt || new Date();
         booking.revisionRequested = false;
         booking.revisionNote = "";
         booking.proposedItinerary = undefined;

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { 
   X, MapPin, Clock, Users, Calendar, Navigation, 
   Check, XCircle, Loader2, ArrowRight, AlertCircle
@@ -8,8 +7,10 @@ const RevisionReviewModal = ({
   isOpen,
   onClose,
   booking,
+  onReview,
   onAccept,
   onCancel,
+  reviewLoading = false,
   acceptLoading = false,
   cancelLoading = false,
 }) => {
@@ -38,6 +39,7 @@ const RevisionReviewModal = ({
     proposed.numberOfPeople !== (itinerary?.numberOfPeople || tripDetails?.numberOfPeople);
 
   const locationsChanged = proposed?.locations?.length > 0;
+  const isReviewMode = typeof onReview === 'function';
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -189,41 +191,66 @@ const RevisionReviewModal = ({
             <p className="text-sm text-blue-800">
               <strong>What happens next?</strong>
               <br />
-              • <strong>Accept:</strong> Your itinerary will be updated with the guide's suggestions, and the booking will remain pending for the guide to accept.
-              <br />
-              • <strong>Cancel Booking:</strong> The booking will be cancelled and you can create a new one if needed.
+              {isReviewMode ? (
+                <>
+                  • <strong>Review on Map:</strong> Load the guide's suggested itinerary into the itinerary page so you can inspect the updated route before deciding.
+                  <br />
+                  • <strong>Accept or Cancel:</strong> After reviewing, use the buttons on the itinerary page to confirm the changes or cancel the booking.
+                </>
+              ) : (
+                <>
+                  • <strong>Accept:</strong> Your itinerary will be updated with the guide's suggestions and the booking will move to awaiting payment.
+                  <br />
+                  • <strong>Cancel Booking:</strong> The booking will be cancelled and you can create a new one if needed.
+                </>
+              )}
             </p>
           </div>
         </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-stone-200 bg-stone-50 flex-shrink-0">
-          <div className="flex items-center gap-3">
+          {isReviewMode ? (
             <button
-              onClick={() => onCancel(booking._id)}
-              disabled={cancelLoading || acceptLoading}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-red-300 text-red-600 font-medium rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+              onClick={() => onReview(booking)}
+              disabled={reviewLoading || acceptLoading || cancelLoading}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
             >
-              {cancelLoading ? (
+              {reviewLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <XCircle className="w-4 h-4" />
+                <Navigation className="w-4 h-4" />
               )}
-              Cancel Booking
+              Review on Map
             </button>
-            <button
-              onClick={() => onAccept(booking._id)}
-              disabled={acceptLoading || cancelLoading}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              {acceptLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Check className="w-4 h-4" />
-              )}
-              Accept Changes
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onCancel(booking._id)}
+                disabled={cancelLoading || acceptLoading}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-red-300 text-red-600 font-medium rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                {cancelLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+                Cancel Booking
+              </button>
+              <button
+                onClick={() => onAccept(booking._id)}
+                disabled={acceptLoading || cancelLoading}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-sage-600 hover:bg-sage-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {acceptLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                Accept Changes
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

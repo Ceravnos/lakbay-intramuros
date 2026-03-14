@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
+import { sendPasswordResetOtpEmail } from "../utils/sendPasswordResetOtpEmail.js";
 
 export const touchLastActivity = async (user) => {
     user.lastActivityAt = new Date();
@@ -249,14 +250,25 @@ export const forgotPassword = async (req, res) => {
         user.resetOtpExpiry = otpExpiry;
         await user.save();
 
-        // In production, send email with OTP
-        // For now, we'll return it in response (mock)
-        console.log(`[MOCK EMAIL] OTP for ${email}: ${otp}`);
+        let deliveryResult;
+
+        try {
+            deliveryResult = await sendPasswordResetOtpEmail({
+                email: user.email,
+                fullName: user.fullName,
+                otp,
+            });
+        } catch (emailError) {
+            user.resetOtp = null;
+            user.resetOtpExpiry = null;
+            await user.save({ validateModifiedOnly: true });
+            console.error("Forgot password email error:", emailError);
+            return res.status(500).json({ message: "Failed to send OTP email" });
+        }
 
         res.json({ 
             message: "OTP sent to your email",
-            // Remove this in production - only for testing
-            mockOtp: process.env.NODE_ENV === "development" ? otp : undefined
+            mockOtp: deliveryResult?.mockOtp,
         });
     } catch (error) {
         console.error("Forgot password error:", error);

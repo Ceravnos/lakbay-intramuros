@@ -14,18 +14,25 @@ const generateMotion = () => {
   };
 };
 
+const initialMotion = {
+  "--start-scale": 1,
+  "--end-scale": 1.2,
+  "--start-x": "0%",
+  "--start-y": "0%",
+  "--end-x": "0%",
+  "--end-y": "0%",
+};
+
 const KenBurnsBackground = ({
   images,
   interval = 8000,
   overlayOpacity = "bg-stone-900/60",
   imageOpacity = "opacity-75",
 }) => {
-  const [bgIndex, setBgIndex] = useState(
-    Math.floor(Math.random() * images.length)
-  );
+  const [bgIndex, setBgIndex] = useState(0);
 
   const [motions, setMotions] = useState(
-    images.map(() => generateMotion())
+    images.map(() => initialMotion)
   );
 
   useEffect(() => {

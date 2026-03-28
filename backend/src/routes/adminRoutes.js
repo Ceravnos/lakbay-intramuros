@@ -8,6 +8,7 @@ import {
     rejectGuide,
     requestDocuments,
     getDashboardStats,
+    getBookingReports,
     getAllUsers,
     getUserById,
     updateUser,
@@ -23,6 +24,7 @@ router.use(adminOnly);
 
 // Dashboard stats
 router.get("/stats", getDashboardStats);
+router.get("/booking-reports", getBookingReports);
 
 // Tour guide management
 router.get("/pending-guides", getPendingGuides);

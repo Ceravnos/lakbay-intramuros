@@ -4,8 +4,9 @@ import {
     handleWebhook,
     getPaymentByBooking,
     verifyPayment,
+    cashOutGuideEarningsSandbox,
 } from "../controllers/paymentController.js";
-import { protect, touristOnly } from "../middleware/authMiddleware.js";
+import { protect, touristOnly, approvedGuideOnly } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -14,6 +15,7 @@ router.post("/webhook", handleWebhook);
 
 // Protected routes
 router.post("/create", protect, touristOnly, createPayment);
+router.post("/guide-cashout-sandbox", protect, approvedGuideOnly, cashOutGuideEarningsSandbox);
 router.get("/:bookingId", protect, getPaymentByBooking);
 router.post("/verify/:bookingId", protect, touristOnly, verifyPayment);
 

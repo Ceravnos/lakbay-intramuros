@@ -9,7 +9,8 @@ import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../lib/axios';
 import { clearPostAuthItineraryHandoff, getTransferredSessionItinerary } from '../lib/utils';
-import { useAuth } from '../context/AuthContext';
+import { optimizeLocationsNearestNeighbor, routesMatchByOrder } from '../lib/routeOptimization';
+import { useAuth } from '../context/useAuth';
 import IntramurosMap from '../components/Map/IntramurosMap';
 import ConfirmationModal from '../components/ConfirmationModal';
 import RevisionReviewModal from '../components/RevisionReviewModal';
@@ -83,8 +84,7 @@ const ItineraryBuilderPage = () => {
     const [saving, setSaving] = useState(false);
     const [bookingRedirectLoading, setBookingRedirectLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState('all');
-    const [showCategoryFilter, setShowCategoryFilter] = useState(false);
+    const selectedCategory = 'all';
     
     // Magic Generate uses saved preferences directly (no modal needed)
     
@@ -205,7 +205,7 @@ const ItineraryBuilderPage = () => {
             setTripStarted(Boolean(savedProgress?.tripStarted) && restoredCompletedStopCount < totalStops);
             setFinishModalOpen(false);
             tripProgressHydratedRef.current = true;
-        } catch (error) {
+        } catch {
             toast.error('Failed to load itinerary');
             navigate('/dashboard');
         } finally {
@@ -263,7 +263,7 @@ const ItineraryBuilderPage = () => {
                     prefetchedGuidesFetchedAt: Date.now(),
                 }
             });
-        } catch (error) {
+        } catch {
             navigate(`/book/${id}`, {
                 state: bookingState,
             });
@@ -496,6 +496,32 @@ const ItineraryBuilderPage = () => {
         setDragOverItem(null);
     };
 
+    const handleOptimizeRoute = useCallback(() => {
+        if (itinerary.locations.length < 3) {
+            toast.error('Add at least 3 stops to optimize your route');
+            return;
+        }
+
+        const currentOrderedLocations = [...itinerary.locations].sort((leftLocation, rightLocation) => leftLocation.order - rightLocation.order);
+        const optimizedLocations = optimizeLocationsNearestNeighbor(currentOrderedLocations);
+
+        if (routesMatchByOrder(currentOrderedLocations, optimizedLocations)) {
+            toast('Route is already optimized', { icon: '🧭' });
+            return;
+        }
+
+        setItinerary(prev => ({
+            ...prev,
+            locations: optimizedLocations,
+        }));
+        setDirectionsResult(null);
+        setTripStarted(false);
+        setCompletedStopCount(0);
+        setFinishModalOpen(false);
+        clearTripProgress(id);
+        toast.success('Route optimized using nearest-neighbor routing');
+    }, [id, itinerary.locations]);
+
     const sortedLocations = [...itinerary.locations].sort((a, b) => a.order - b.order);
     const canEditItinerary = !isReadOnly && !tripStarted;
     const isRevisionReviewMode = Boolean(revisionBooking?._id && revisionBooking.revisionRequested);
@@ -538,7 +564,7 @@ const ItineraryBuilderPage = () => {
             await api.put('/users/personalization', userPreferences);
             toast.success('Preferences saved!');
             setShowPersonalization(false);
-        } catch (error) {
+        } catch {
             toast.error('Failed to save preferences');
         }
     };
@@ -550,21 +576,24 @@ const ItineraryBuilderPage = () => {
             ? userPreferences.preferredCategories[0] 
             : 'all';
         const countToUse = userPreferences.maxLocationsPerTrip || 5;
-        
+
         const generated = generateSmartItinerary(categoryToUse, countToUse);
+        const generatedLocations = generated.map((loc, index) => ({
+            placeId: loc.placeId,
+            name: loc.name,
+            address: loc.address,
+            lat: loc.lat,
+            lng: loc.lng,
+            order: index,
+            notes: '',
+            category: loc.category,
+            estimatedTime: loc.estimatedTime,
+        }));
+        const optimizedGeneratedLocations = optimizeLocationsNearestNeighbor(generatedLocations);
+
         setItinerary(prev => ({
             ...prev,
-            locations: generated.map((loc, index) => ({
-                placeId: loc.placeId,
-                name: loc.name,
-                address: loc.address,
-                lat: loc.lat,
-                lng: loc.lng,
-                order: index,
-                notes: '',
-                category: loc.category,
-                estimatedTime: loc.estimatedTime,
-            })),
+            locations: optimizedGeneratedLocations,
         }));
         // Clear any existing route when generating new itinerary
         setDirectionsResult(null);
@@ -924,6 +953,16 @@ const ItineraryBuilderPage = () => {
                         
                         {/* Action Buttons */}
                         <div className="flex gap-2">
+                            {canEditItinerary && (
+                                <button
+                                    onClick={handleOptimizeRoute}
+                                    disabled={sortedLocations.length < 3 || calculatingRoute}
+                                    className="flex items-center justify-center gap-2 px-3 py-2.5 border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Route className="w-4 h-4" />
+                                    Optimize
+                                </button>
+                            )}
                             {/* Start Trip Button */}
                             {isAuthenticated ? (
                                 <button

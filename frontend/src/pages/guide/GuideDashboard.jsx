@@ -7,7 +7,7 @@ import {
   Accessibility, Baby, Heart, Play, CalendarCheck, CreditCard
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 import api from "../../lib/axios";
 import Navbar from "../../components/Navbar"
 import ConfirmationModal from "../../components/ConfirmationModal"
@@ -15,7 +15,58 @@ import ItineraryViewModal from "../../components/ItineraryViewModal"
 import ItineraryEditModal from "../../components/ItineraryEditModal"
 import GuideOngoingTourPanel from "../../components/GuideOngoingTourPanel"
 
+const MONTH_FILTER_OPTIONS = [
+  { value: "all", label: "All months" },
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
+const buildEarningsSummary = (bookings = []) =>
+  bookings.reduce(
+    (accumulator, booking) => {
+      const paymentAmount = booking.payment?.amount || 0;
+
+      if (booking.payment?.status !== "paid") {
+        return accumulator;
+      }
+
+      accumulator.grossEarnings += paymentAmount;
+      accumulator.paidBookingCount += 1;
+
+      if (booking.payment?.guidePayoutStatus === "available") {
+        accumulator.availableEarnings += paymentAmount;
+        accumulator.availablePaymentCount += 1;
+      }
+
+      if (booking.payment?.guidePayoutStatus === "sandbox_paid_out") {
+        accumulator.sandboxPaidOutEarnings += paymentAmount;
+        accumulator.sandboxCashoutCount += 1;
+      }
+
+      return accumulator;
+    },
+    {
+      grossEarnings: 0,
+      availableEarnings: 0,
+      sandboxPaidOutEarnings: 0,
+      paidBookingCount: 0,
+      availablePaymentCount: 0,
+      sandboxCashoutCount: 0,
+    }
+  );
+
 const GuideDashboard = () => {
+  const currentYear = new Date().getFullYear();
   const { user, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState("pending");
   const [scheduledSubTab, setScheduledSubTab] = useState("pending_payment");
@@ -24,10 +75,14 @@ const GuideDashboard = () => {
   const [activeBookings, setActiveBookings] = useState([]);
   const [completedBookings, setCompletedBookings] = useState([]);
   const [rejectedBookings, setRejectedBookings] = useState([]);
+  const [earningsBookings, setEarningsBookings] = useState([]);
+  const [cashoutHistory, setCashoutHistory] = useState([]);
   const [selectedOngoingBookingId, setSelectedOngoingBookingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [error, setError] = useState(null);
+  const [cashoutLoading, setCashoutLoading] = useState(false);
+  const [earningsFilters, setEarningsFilters] = useState({ month: "all", year: String(currentYear) });
   
   // Availability management state
   const [unavailableDates, setUnavailableDates] = useState(user?.unavailableDates || []);
@@ -80,6 +135,8 @@ const GuideDashboard = () => {
           setActiveBookings(res.data.activeBookings || []);
           setCompletedBookings(res.data.completedBookings || []);
           setRejectedBookings(res.data.rejectedBookings || []);
+          setEarningsBookings(res.data.earningsBookings || []);
+          setCashoutHistory(res.data.cashoutHistory || []);
           setUnavailableDates(res.data.unavailableDates || []);
           setError(null);
           return res.data;
@@ -397,6 +454,25 @@ const GuideDashboard = () => {
       );
   }, []);
 
+  const handleSandboxCashOut = async () => {
+      if (allEarningsSummary.availableEarnings <= 0) {
+          toast.error("No available earnings to cash out");
+          return;
+      }
+
+      setCashoutLoading(true);
+      try {
+          const res = await api.post("/payments/guide-cashout-sandbox");
+          toast.success(`Sandbox cash-out completed for ${formatCurrency(res.data.amount || 0)}`);
+          setActiveTab("earnings");
+          await fetchBookings({ background: true });
+      } catch (error) {
+          toast.error(error.response?.data?.message || "Failed to process sandbox cash-out");
+      } finally {
+          setCashoutLoading(false);
+      }
+  };
+
 
   const formatDate = (date) => {
       return new Date(date).toLocaleDateString('en-US', {
@@ -413,6 +489,27 @@ const GuideDashboard = () => {
           minute: '2-digit',
           hour12: true
       })
+  };
+
+  const formatCurrency = (amount) => {
+      return new Intl.NumberFormat('en-PH', {
+          style: 'currency',
+          currency: 'PHP',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+      }).format(amount || 0);
+  };
+
+  const getPayoutStatusBadge = (status) => {
+      if (status === "available") {
+          return <span className="px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">Available</span>;
+      }
+
+      if (status === "sandbox_paid_out") {
+          return <span className="px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-full">Sandbox Paid Out</span>;
+      }
+
+      return <span className="px-2.5 py-1 text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200 rounded-full">Unavailable</span>;
   };
 
   const pendingPaymentBookings = useMemo(
@@ -433,6 +530,60 @@ const GuideDashboard = () => {
   const selectedOngoingBooking = useMemo(
       () => activeBookings.find(booking => booking._id === selectedOngoingBookingId) || activeBookings[0] || null,
       [activeBookings, selectedOngoingBookingId]
+  );
+  const earningsYearOptions = useMemo(() => {
+      const availableYears = new Set([currentYear]);
+
+      earningsBookings.forEach((booking) => {
+          const referenceDate = booking.payment?.paidAt || booking.payment?.createdAt || booking.tripDetails?.preferredDate;
+
+          if (!referenceDate) {
+              return;
+          }
+
+          const parsedDate = new Date(referenceDate);
+
+          if (!Number.isNaN(parsedDate.getTime())) {
+              availableYears.add(parsedDate.getFullYear());
+          }
+      });
+
+      return Array.from(availableYears).sort((leftYear, rightYear) => rightYear - leftYear);
+  }, [currentYear, earningsBookings]);
+  const filteredEarningsBookings = useMemo(
+      () =>
+          earningsBookings.filter((booking) => {
+              const referenceDate = booking.payment?.paidAt || booking.payment?.createdAt || booking.tripDetails?.preferredDate;
+
+              if (!referenceDate) {
+                  return false;
+              }
+
+              const parsedDate = new Date(referenceDate);
+
+              if (Number.isNaN(parsedDate.getTime())) {
+                  return false;
+              }
+
+              if (earningsFilters.year !== "all" && parsedDate.getFullYear() !== Number(earningsFilters.year)) {
+                  return false;
+              }
+
+              if (earningsFilters.month !== "all" && parsedDate.getMonth() + 1 !== Number(earningsFilters.month)) {
+                  return false;
+              }
+
+              return true;
+          }),
+      [earningsBookings, earningsFilters.month, earningsFilters.year]
+  );
+  const allEarningsSummary = useMemo(
+      () => buildEarningsSummary(earningsBookings),
+      [earningsBookings]
+  );
+  const filteredEarningsSummary = useMemo(
+      () => buildEarningsSummary(filteredEarningsBookings),
+      [filteredEarningsBookings]
   );
 
   const stats = {
@@ -472,7 +623,7 @@ const GuideDashboard = () => {
 
               {/* Tabs */}
               <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-                  <div className="flex border-b border-stone-200">
+                  <div className="flex border-b border-stone-200 overflow-x-auto">
                       <button
                           onClick={() => setActiveTab("pending")}
                           className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-colors ${
@@ -518,6 +669,22 @@ const GuideDashboard = () => {
                           {stats.ongoing > 0 && (
                               <span className="px-2 py-0.5 bg-sage-100 text-sage-700 text-xs rounded-full">
                                   {stats.ongoing}
+                              </span>
+                          )}
+                      </button>
+                      <button
+                          onClick={() => setActiveTab("earnings")}
+                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-colors ${
+                              activeTab === "earnings"
+                                  ? "text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/60"
+                                  : "text-stone-500 hover:text-stone-700 hover:bg-stone-50"
+                          }`}
+                      >
+                          <CreditCard className="w-4 h-4" />
+                          Earnings
+                          {allEarningsSummary.availablePaymentCount > 0 && (
+                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full">
+                                  {allEarningsSummary.availablePaymentCount}
                               </span>
                           )}
                       </button>
@@ -867,6 +1034,156 @@ const GuideDashboard = () => {
                                               />
                                           </div>
                                       )}
+                                  </div>
+                              )}
+
+                              {activeTab === "earnings" && (
+                                  <div className="space-y-6">
+                                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                          <div className="bg-stone-50 border border-stone-200 rounded-xl p-4">
+                                              <p className="text-sm text-stone-500">Gross Earnings</p>
+                                              <p className="text-2xl font-semibold text-stone-800 mt-2">{formatCurrency(filteredEarningsSummary.grossEarnings)}</p>
+                                              <p className="text-xs text-stone-400 mt-1">{filteredEarningsSummary.paidBookingCount} paid booking(s)</p>
+                                          </div>
+                                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                                              <p className="text-sm text-emerald-700">Available Balance</p>
+                                              <p className="text-2xl font-semibold text-emerald-800 mt-2">{formatCurrency(filteredEarningsSummary.availableEarnings)}</p>
+                                              <p className="text-xs text-emerald-600 mt-1">Ready for sandbox cash-out</p>
+                                          </div>
+                                          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                                              <p className="text-sm text-blue-700">Sandbox Paid Out</p>
+                                              <p className="text-2xl font-semibold text-blue-800 mt-2">{formatCurrency(filteredEarningsSummary.sandboxPaidOutEarnings)}</p>
+                                              <p className="text-xs text-blue-600 mt-1">Marked as cashed out</p>
+                                          </div>
+                                          <div className="bg-white border border-stone-200 rounded-xl p-4">
+                                              <p className="text-sm text-stone-500">All Available Balance</p>
+                                              <p className="text-2xl font-semibold text-stone-800 mt-2">{formatCurrency(allEarningsSummary.availableEarnings)}</p>
+                                              <p className="text-xs text-stone-400 mt-1">Across all loaded paid bookings</p>
+                                          </div>
+                                      </div>
+
+                                      <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                                          <div>
+                                              <h3 className="font-semibold text-stone-800">Track your paid bookings</h3>
+                                              <p className="text-sm text-stone-500 mt-1">Use month and year filters to review your earnings, then cash out the currently available balance in sandbox mode.</p>
+                                          </div>
+                                          <div className="flex flex-col sm:flex-row gap-2">
+                                              <select
+                                                  value={earningsFilters.month}
+                                                  onChange={(event) => setEarningsFilters((previousFilters) => ({ ...previousFilters, month: event.target.value }))}
+                                                  className="px-4 py-2 bg-white border border-stone-200 rounded-lg text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:border-transparent"
+                                              >
+                                                  {MONTH_FILTER_OPTIONS.map((monthOption) => (
+                                                      <option key={monthOption.value} value={monthOption.value}>
+                                                          {monthOption.label}
+                                                      </option>
+                                                  ))}
+                                              </select>
+                                              <select
+                                                  value={earningsFilters.year}
+                                                  onChange={(event) => setEarningsFilters((previousFilters) => ({ ...previousFilters, year: event.target.value }))}
+                                                  className="px-4 py-2 bg-white border border-stone-200 rounded-lg text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:border-transparent"
+                                              >
+                                                  {earningsYearOptions.map((yearOption) => (
+                                                      <option key={yearOption} value={yearOption}>
+                                                          {yearOption}
+                                                      </option>
+                                                  ))}
+                                              </select>
+                                              <button
+                                                  onClick={handleSandboxCashOut}
+                                                  disabled={cashoutLoading || allEarningsSummary.availableEarnings <= 0}
+                                                  className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                                              >
+                                                  {cashoutLoading ? (
+                                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                                  ) : (
+                                                      <>
+                                                          <CreditCard className="w-4 h-4" />
+                                                          Sandbox Cash Out
+                                                      </>
+                                                  )}
+                                              </button>
+                                          </div>
+                                      </div>
+
+                                      {filteredEarningsBookings.length === 0 ? (
+                                          <div className="text-center py-12 border border-dashed border-stone-200 rounded-xl">
+                                              <CreditCard className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                                              <p className="text-stone-500">No paid bookings found for the selected filters</p>
+                                              <p className="text-stone-400 text-sm mt-1">Paid tours will appear here once tourists complete payment.</p>
+                                          </div>
+                                      ) : (
+                                          <div className="bg-white border border-stone-200 rounded-xl overflow-x-auto">
+                                              <table className="w-full min-w-[860px]">
+                                                  <thead>
+                                                      <tr className="border-b border-stone-200 bg-stone-50">
+                                                          <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Booking</th>
+                                                          <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Tourist</th>
+                                                          <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Tour Date</th>
+                                                          <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Paid At</th>
+                                                          <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Amount</th>
+                                                          <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Cash-Out Status</th>
+                                                      </tr>
+                                                  </thead>
+                                                  <tbody>
+                                                      {filteredEarningsBookings.map((booking) => (
+                                                          <tr key={booking._id} className="border-b border-stone-100 hover:bg-stone-50">
+                                                              <td className="py-3 px-4">
+                                                                  <p className="font-medium text-stone-800">{booking.tripDetails?.title}</p>
+                                                                  <p className="text-sm text-stone-500 mt-1">{booking.status === "completed" ? "Completed" : booking.status === "active" ? "Active" : "Scheduled"}</p>
+                                                              </td>
+                                                              <td className="py-3 px-4 text-stone-600">{booking.touristId?.fullName || "Unknown Tourist"}</td>
+                                                              <td className="py-3 px-4 text-stone-600">{formatDate(booking.tripDetails?.preferredDate)}</td>
+                                                              <td className="py-3 px-4 text-stone-600">
+                                                                  {booking.payment?.paidAt ? `${formatDate(booking.payment.paidAt)}, ${formatTime(booking.payment.paidAt)}` : "—"}
+                                                              </td>
+                                                              <td className="py-3 px-4 font-medium text-stone-800">{formatCurrency(booking.payment?.amount)}</td>
+                                                              <td className="py-3 px-4">{getPayoutStatusBadge(booking.payment?.guidePayoutStatus)}</td>
+                                                          </tr>
+                                                      ))}
+                                                  </tbody>
+                                              </table>
+                                          </div>
+                                      )}
+
+                                      <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
+                                          <div className="px-5 py-4 border-b border-stone-200">
+                                              <h3 className="font-semibold text-stone-800">Sandbox Cash-Out History</h3>
+                                              <p className="text-sm text-stone-500 mt-1">Each sandbox cash-out groups your available paid bookings into one simulated payout batch.</p>
+                                          </div>
+                                          {cashoutHistory.length === 0 ? (
+                                              <div className="text-center py-10">
+                                                  <History className="w-10 h-10 text-stone-300 mx-auto mb-3" />
+                                                  <p className="text-stone-500">No sandbox cash-outs yet</p>
+                                              </div>
+                                          ) : (
+                                              <div className="overflow-x-auto">
+                                                  <table className="w-full min-w-[640px]">
+                                                      <thead>
+                                                          <tr className="border-b border-stone-200 bg-stone-50">
+                                                              <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Batch ID</th>
+                                                              <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Paid Out At</th>
+                                                              <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Bookings</th>
+                                                              <th className="text-left py-3 px-4 text-sm font-medium text-stone-500">Amount</th>
+                                                          </tr>
+                                                      </thead>
+                                                      <tbody>
+                                                          {cashoutHistory.map((cashout) => (
+                                                              <tr key={cashout.batchId} className="border-b border-stone-100 hover:bg-stone-50">
+                                                                  <td className="py-3 px-4 font-mono text-xs text-stone-600">{cashout.batchId}</td>
+                                                                  <td className="py-3 px-4 text-stone-600">
+                                                                      {cashout.paidAt ? `${formatDate(cashout.paidAt)}, ${formatTime(cashout.paidAt)}` : "—"}
+                                                                  </td>
+                                                                  <td className="py-3 px-4 text-stone-600">{cashout.paymentCount}</td>
+                                                                  <td className="py-3 px-4 font-medium text-stone-800">{formatCurrency(cashout.amount)}</td>
+                                                              </tr>
+                                                          ))}
+                                                      </tbody>
+                                                  </table>
+                                              </div>
+                                          )}
+                                      </div>
                                   </div>
                               )}
 

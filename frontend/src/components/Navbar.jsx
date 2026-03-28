@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { Link, useNavigate, useLocation } from "react-router"
 import { PlusIcon, LogOut, Compass, Shield, MapPin, ChevronDown, ToggleLeft, ToggleRight, Loader2, User, Bell } from "lucide-react"
 import toast from "react-hot-toast"
-import { useAuth } from "../context/AuthContext"
+import { useAuth } from "../context/useAuth"
 import api from "../lib/axios"
 import { buildPostAuthRedirectState, clearPostAuthItineraryHandoff, persistPostAuthItineraryHandoff } from "../lib/utils"
 
@@ -79,7 +79,7 @@ const Navbar = ({ guestAuthSessionItinerary = [] }) => {
       } else {
         navigate("/dashboard");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to toggle mode");
     } finally {
       setTogglingMode(false);

@@ -1,39 +1,45 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import api from "../lib/axios";
-
-const AuthContext = createContext(null);
-
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error("useAuth must be used within an AuthProvider");
-    }
-    return context;
-};
+import AuthContext from "./authContext";
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => Boolean(localStorage.getItem("token")));
 
     useEffect(() => {
-        checkAuth();
-    }, []);
-
-    const checkAuth = async () => {
         const token = localStorage.getItem("token");
-        if (token) {
+
+        if (!token) {
+            return undefined;
+        }
+
+        let ignore = false;
+
+        const checkAuth = async () => {
             try {
                 api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
                 const res = await api.get("/auth/me");
-                setUser(res.data);
+
+                if (!ignore) {
+                    setUser(res.data);
+                }
             } catch (error) {
                 console.error("Auth check failed:", error);
                 localStorage.removeItem("token");
                 delete api.defaults.headers.common["Authorization"];
+            } finally {
+                if (!ignore) {
+                    setLoading(false);
+                }
             }
-        }
-        setLoading(false);
-    };
+        };
+
+        checkAuth();
+
+        return () => {
+            ignore = true;
+        };
+    }, []);
 
 
 
@@ -68,14 +74,21 @@ export const AuthProvider = ({ children }) => {
     };
 
     // Apply to become a guide (uses phoneNumber from user profile as contactNumber)
-    const applyForGuide = async (accreditationFile, accreditationFileName) => {
-        const res = await api.post("/auth/apply-guide", { 
-            contactNumber: user?.phoneNumber, 
-            accreditationFile, 
-            accreditationFileName 
+    const applyForGuide = async (applicationData) => {
+        const res = await api.post("/auth/apply-guide", {
+            contactNumber: user?.phoneNumber,
+            ...applicationData,
         });
-        // Update local user state with new guideStatus
-        setUser(prev => ({ ...prev, guideStatus: "pending" }));
+        setUser(prev => ({
+            ...prev,
+            guideStatus: res.data.guideStatus || "pending",
+            guideAddress: res.data.guideAddress || applicationData?.guideAddress || prev?.guideAddress,
+            guideApplicationSubmittedAt: res.data.guideApplicationSubmittedAt || prev?.guideApplicationSubmittedAt,
+            livenessCheckStatus: res.data.livenessCheckStatus || prev?.livenessCheckStatus,
+            livenessCapturedAt: res.data.livenessCapturedAt || prev?.livenessCapturedAt,
+            documentRequestReason: null,
+            rejectionReason: null,
+        }));
         return res.data;
     };
 
@@ -153,5 +166,3 @@ export const AuthProvider = ({ children }) => {
         </AuthContext.Provider>
     );
 };
-
-export default AuthContext;

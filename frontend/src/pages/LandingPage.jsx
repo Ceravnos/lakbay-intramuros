@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { MapPin, Plus, X, Navigation, LogIn, ChevronRight, Trash2, Save,
   Sparkles, Filter, ChevronDown, Map } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import IntramurosMap from '../components/Map/IntramurosMap';
 import Navbar from '../components/Navbar';
 import { buildPostAuthRedirectState, persistPostAuthItineraryHandoff } from '../lib/utils';
@@ -18,35 +18,36 @@ import bg3 from './assets/login-bg-3.jpg';
 
 const backgrounds = [bg1, bg2, bg3];
 
+const getInitialSessionItinerary = () => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const saved = sessionStorage.getItem('lakbay_session_itinerary');
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
 const LandingPage = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [sessionItinerary, setSessionItinerary] = useState([]);
-  const [showPanel, setShowPanel] = useState(false);
+  const [sessionItinerary, setSessionItinerary] = useState(getInitialSessionItinerary);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   const [showMobileItinerary, setShowMobileItinerary] = useState(false);
   const mapSectionRef = useRef(null);
 
   // Ken Burns slideshow
-  const [bgIndex, setBgIndex] = useState(
-    Math.floor(Math.random() * backgrounds.length)
-  );
+  const [bgIndex, setBgIndex] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setBgIndex((prev) => (prev + 1) % backgrounds.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
-
-  // Load session itinerary from sessionStorage
-  useEffect(() => {
-    const saved = sessionStorage.getItem('lakbay_session_itinerary');
-    if (saved) {
-      setSessionItinerary(JSON.parse(saved));
-      setShowPanel(true);
-    }
   }, []);
 
   // Save to sessionStorage whenever itinerary changes
@@ -65,7 +66,6 @@ const LandingPage = () => {
   const addToItinerary = useCallback((landmark) => {
     if (!sessionItinerary.find(item => item.id === landmark.id)) {
       setSessionItinerary(prev => [...prev, { ...landmark, order: prev.length }]);
-      setShowPanel(true);
     }
   }, [sessionItinerary]);
 
@@ -73,7 +73,6 @@ const LandingPage = () => {
   const handleSmartGenerate = useCallback(() => {
     const generated = generateSmartItinerary(selectedCategory, 5);
     setSessionItinerary(generated);
-    setShowPanel(true);
     setShowMobileItinerary(true);
   }, [selectedCategory]);
 

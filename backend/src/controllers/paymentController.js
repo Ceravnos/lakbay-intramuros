@@ -5,6 +5,49 @@ import { emitToUser, emitToGuide } from "../config/socket.js";
 
 const PAYMONGO_API = "https://api.paymongo.com/v1";
 
+const getGuidePayoutStatus = (guideId) => (guideId ? "available" : "unavailable");
+
+const syncPaidPaymentAndBooking = async ({ bookingId, checkoutSessionId = null }) => {
+    const booking = await Booking.findById(bookingId)
+        .populate("touristId", "fullName email")
+        .populate("guideId", "fullName email")
+        .populate("itineraryId");
+
+    if (!booking) {
+        return { booking: null, payment: null, scheduled: false };
+    }
+
+    const resolvedGuideId = booking.guideId?._id || booking.guideId || null;
+    const payment = await Payment.findOne({ bookingId }).sort({ createdAt: -1 });
+
+    if (payment) {
+        payment.status = "paid";
+        payment.guideId = resolvedGuideId;
+        payment.paidAt = payment.paidAt || new Date();
+        payment.guidePayoutStatus =
+            payment.guidePayoutStatus === "sandbox_paid_out"
+                ? "sandbox_paid_out"
+                : getGuidePayoutStatus(resolvedGuideId);
+
+        if (checkoutSessionId) {
+            payment.paymentIntentId = checkoutSessionId;
+        }
+
+        await payment.save();
+    }
+
+    let scheduled = false;
+
+    if (booking.status === "awaiting_payment") {
+        booking.status = "scheduled";
+        booking.scheduledAt = new Date();
+        await booking.save();
+        scheduled = true;
+    }
+
+    return { booking, payment, scheduled };
+};
+
 // Helper to create base64 encoded auth header for PayMongo
 const getPayMongoAuthHeader = () => {
     const PAYMONGO_SECRET_KEY = process.env.PAYMONGO_SECRET_KEY;
@@ -119,6 +162,7 @@ export const createPayment = async (req, res) => {
         const payment = await Payment.create({
             bookingId,
             touristId,
+            guideId: booking.guideId || null,
             amount,
             currency: "PHP",
             status: "pending",
@@ -166,30 +210,12 @@ export const handleWebhook = async (req, res) => {
                 return res.status(200).json({ message: "No bookingId found, skipping" });
             }
 
-            // Update payment status
-            const payment = await Payment.findOne({
+            const { booking, scheduled } = await syncPaidPaymentAndBooking({
                 bookingId,
-                status: "pending",
+                checkoutSessionId,
             });
 
-            if (payment) {
-                payment.status = "paid";
-                if (checkoutSessionId) {
-                    payment.paymentIntentId = checkoutSessionId;
-                }
-                await payment.save();
-            }
-
-            // Update booking status to scheduled (paid and waiting for trip date)
-            const booking = await Booking.findById(bookingId)
-                .populate("touristId", "fullName email")
-                .populate("guideId", "fullName email")
-                .populate("itineraryId");
-                
-            if (booking && booking.status === "awaiting_payment") {
-                booking.status = "scheduled";
-                booking.scheduledAt = new Date();
-                await booking.save();
+            if (booking && scheduled) {
                 console.log(`[PayMongo Webhook] Booking ${bookingId} marked as scheduled`);
 
                 // Emit socket events to notify both tourist and guide
@@ -284,23 +310,27 @@ export const verifyPayment = async (req, res) => {
             (payments && payments.length > 0 && payments[0]?.attributes?.status === "paid");
 
         if (isPaid) {
-            // Update payment record
-            payment.status = "paid";
-            await payment.save();
+            const {
+                booking: updatedBooking,
+                payment: updatedPayment,
+                scheduled,
+            } = await syncPaidPaymentAndBooking({
+                bookingId,
+                checkoutSessionId: payment.paymentIntentId,
+            });
 
-            // Update booking status to scheduled (webhook may have already done this)
-            if (booking.status === "awaiting_payment") {
-                booking.status = "scheduled";
-                booking.scheduledAt = new Date();
-                await booking.save();
-                // Note: Socket events are emitted by webhook handler to avoid duplicates
+            if (updatedBooking && scheduled) {
+                emitToUser(updatedBooking.touristId._id.toString(), "payment-paid", updatedBooking);
+                if (updatedBooking.guideId) {
+                    emitToGuide(updatedBooking.guideId._id.toString(), "payment-paid", updatedBooking);
+                }
             }
 
             return res.json({
                 message: "Payment verified successfully",
                 status: "paid",
-                booking,
-                payment,
+                booking: updatedBooking || booking,
+                payment: updatedPayment || payment,
             });
         }
 
@@ -311,5 +341,53 @@ export const verifyPayment = async (req, res) => {
     } catch (error) {
         console.error("Verify payment error:", error.response?.data || error.message);
         res.status(500).json({ message: "Failed to verify payment" });
+    }
+};
+
+export const cashOutGuideEarningsSandbox = async (req, res) => {
+    try {
+        const guideId = req.user._id;
+        const guideBookingIds = await Booking.find({ guideId }).distinct("_id");
+        const availablePayments = await Payment.find({
+            status: "paid",
+            guidePayoutStatus: { $in: [null, "available"] },
+            $or: [
+                { guideId },
+                { bookingId: { $in: guideBookingIds } },
+            ],
+        });
+
+        if (!availablePayments.length) {
+            return res.status(400).json({ message: "No available earnings to cash out" });
+        }
+
+        const batchId = `sandbox-${guideId.toString()}-${Date.now()}`;
+        const payoutTime = new Date();
+        const totalAmount = availablePayments.reduce((sum, currentPayment) => sum + (currentPayment.amount || 0), 0);
+
+        await Payment.updateMany(
+            {
+                _id: { $in: availablePayments.map((currentPayment) => currentPayment._id) },
+            },
+            {
+                $set: {
+                    guideId,
+                    guidePayoutStatus: "sandbox_paid_out",
+                    guidePayoutAt: payoutTime,
+                    guidePayoutBatchId: batchId,
+                },
+            }
+        );
+
+        res.json({
+            message: "Sandbox cash-out completed",
+            batchId,
+            amount: totalAmount,
+            paymentCount: availablePayments.length,
+            paidAt: payoutTime,
+        });
+    } catch (error) {
+        console.error("Sandbox guide cash-out error:", error);
+        res.status(500).json({ message: "Failed to process sandbox cash-out" });
     }
 };

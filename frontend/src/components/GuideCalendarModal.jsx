@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { 
     X, ChevronLeft, ChevronRight, Calendar, Clock, 
     User, Star, Phone, Check, Loader2 
@@ -14,28 +14,37 @@ const GuideCalendarModal = ({
     onSelectTime 
 }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [localSelectedDate, setLocalSelectedDate] = useState(selectedDate || null);
-    const [localSelectedTime, setLocalSelectedTime] = useState(selectedTime || '');
+    const selectionKey = `${isOpen ? 'open' : 'closed'}:${guide?._id || ''}:${selectedDate || ''}:${selectedTime || ''}`;
+    const [selectionDraft, setSelectionDraft] = useState({
+        key: '',
+        selectedDate: null,
+        selectedTime: '',
+    });
+    const hasActiveDraft = selectionDraft.key === selectionKey;
+    const localSelectedDate = hasActiveDraft ? selectionDraft.selectedDate : (selectedDate || null);
+    const localSelectedTime = hasActiveDraft ? selectionDraft.selectedTime : (selectedTime || '');
 
-    useEffect(() => {
-        if (selectedDate) {
-            setLocalSelectedDate(selectedDate);
-        }
-        if (selectedTime) {
-            setLocalSelectedTime(selectedTime);
-        }
-    }, [selectedDate, selectedTime]);
+    const updateSelectionDraft = (updates) => {
+        setSelectionDraft((previousDraft) => ({
+            key: selectionKey,
+            selectedDate: previousDraft.key === selectionKey ? previousDraft.selectedDate : (selectedDate || null),
+            selectedTime: previousDraft.key === selectionKey ? previousDraft.selectedTime : (selectedTime || ''),
+            ...updates,
+        }));
+    };
+
+    const guideUnavailableDates = guide?.unavailableDates;
 
     // Parse unavailable dates from guide data
     const unavailableDates = useMemo(() => {
-        if (!guide?.unavailableDates) return new Set();
+        if (!guideUnavailableDates) return new Set();
         return new Set(
-            guide.unavailableDates.map(d => {
+            guideUnavailableDates.map(d => {
                 const date = new Date(d);
                 return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             })
         );
-    }, [guide?.unavailableDates]);
+    }, [guideUnavailableDates]);
 
     const getDaysInMonth = (date) => {
         const year = date.getFullYear();
@@ -79,7 +88,7 @@ const GuideCalendarModal = ({
         const year = currentMonth.getFullYear();
         const month = String(currentMonth.getMonth() + 1).padStart(2, '0');
         const dayStr = String(day).padStart(2, '0');
-        setLocalSelectedDate(`${year}-${month}-${dayStr}`);
+        updateSelectionDraft({ selectedDate: `${year}-${month}-${dayStr}` });
     };
 
     const handleConfirm = () => {
@@ -270,7 +279,7 @@ const GuideCalendarModal = ({
                         {timeSlots.map(slot => (
                             <button
                                 key={slot.value}
-                                onClick={() => setLocalSelectedTime(slot.value)}
+                                onClick={() => updateSelectionDraft({ selectedTime: slot.value })}
                                 className={`
                                     px-4 py-4 rounded-xl text-center transition-all
                                     ${localSelectedTime === slot.value

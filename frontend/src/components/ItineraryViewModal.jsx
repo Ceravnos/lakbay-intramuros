@@ -14,9 +14,7 @@ const ItineraryViewModal = ({
     isOpen,
     onClose,
     booking,
-    onSendRevisionRequest,
     onEditItinerary,
-    loading = false,
 }) => {
     if (!isOpen || !booking) return null;
 

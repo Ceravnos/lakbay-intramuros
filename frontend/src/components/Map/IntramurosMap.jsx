@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useState, useRef, useEffect } from 'react';
+import { Fragment, useCallback, useState, useRef } from 'react';
 import { GoogleMap, useLoadScript, Marker, InfoWindow, DirectionsRenderer, OverlayView } from '@react-google-maps/api';
 import { MapPin, Loader2 } from 'lucide-react';
 import { INTRAMUROS_LOCATIONS, getCategoryConfig } from '../../data/locations';
@@ -52,7 +52,6 @@ const IntramurosMap = ({
     availableLocations = INTRAMUROS_LOCATIONS,
     onMarkerClick,
     onMapClick,
-    showDirections = false,
     showNumberedPins = false,
     showLocationLabels = false,
     selectedMarkerId = null,
@@ -67,7 +66,20 @@ const IntramurosMap = ({
     });
 
     const mapRef = useRef(null);
-    const [selectedMarker, setSelectedMarker] = useState(null);
+    const [manualSelectedMarker, setManualSelectedMarker] = useState(null);
+    const [dismissedSelectedMarkerId, setDismissedSelectedMarkerId] = useState(null);
+
+    const buildMarkerDetails = useCallback((marker) => {
+        if (!marker) {
+            return null;
+        }
+
+        const locationData = INTRAMUROS_LOCATIONS.find(location =>
+            location.id === marker.id || location.placeId === marker.placeId
+        ) || marker;
+
+        return { ...locationData, ...marker };
+    }, []);
 
     const onLoad = useCallback((map) => {
         mapRef.current = map;
@@ -78,14 +90,16 @@ const IntramurosMap = ({
     }, []);
 
     const handleMarkerClick = (marker) => {
-        setSelectedMarker(marker);
+        setDismissedSelectedMarkerId(null);
+        setManualSelectedMarker(buildMarkerDetails(marker));
         if (onMarkerClick) {
             onMarkerClick(marker);
         }
     };
 
     const handleMapClick = (e) => {
-        setSelectedMarker(null);
+        setDismissedSelectedMarkerId(selectedMarkerId || null);
+        setManualSelectedMarker(null);
         if (onMapClick && interactive) {
             onMapClick({
                 lat: e.latLng.lat(),
@@ -94,39 +108,26 @@ const IntramurosMap = ({
         }
     };
 
-    useEffect(() => {
-        if (!selectedMarkerId) {
-            return;
-        }
+    const propSelectedMarker = selectedMarkerId && selectedMarkerId !== dismissedSelectedMarkerId
+        ? buildMarkerDetails(
+            markers.find(marker =>
+                marker.id === selectedMarkerId || marker.placeId === selectedMarkerId
+            ) || availableLocations.find(location =>
+                location.id === selectedMarkerId || location.placeId === selectedMarkerId
+            )
+        )
+        : null;
 
-        const matchedMarker = markers.find(marker =>
-            marker.id === selectedMarkerId || marker.placeId === selectedMarkerId
-        );
-
-        if (matchedMarker) {
-            const locationData = INTRAMUROS_LOCATIONS.find(l =>
-                l.id === matchedMarker.id || l.placeId === matchedMarker.placeId
-            ) || matchedMarker;
-
-            setSelectedMarker({ ...locationData, ...matchedMarker });
-        }
-    }, [markers, selectedMarkerId]);
-
-    useEffect(() => {
-        if (!selectedMarker) {
-            return;
-        }
-
-        const isVisible = markers.some(marker =>
-            marker.id === selectedMarker.id || marker.placeId === selectedMarker.placeId
+    const candidateSelectedMarker = propSelectedMarker || manualSelectedMarker;
+    const selectedMarker = candidateSelectedMarker && (
+        markers.some(marker =>
+            marker.id === candidateSelectedMarker.id || marker.placeId === candidateSelectedMarker.placeId
         ) || availableLocations.some(location =>
-            location.id === selectedMarker.id || location.placeId === selectedMarker.placeId
-        );
-
-        if (!isVisible) {
-            setSelectedMarker(null);
-        }
-    }, [availableLocations, markers, selectedMarker]);
+            location.id === candidateSelectedMarker.id || location.placeId === candidateSelectedMarker.placeId
+        )
+    )
+        ? candidateSelectedMarker
+        : null;
 
     if (loadError) {
         return (
@@ -258,7 +259,10 @@ const IntramurosMap = ({
                 <InfoWindow
                     position={{ lat: selectedMarker.lat, lng: selectedMarker.lng }}
                     options={{ pixelOffset: new window.google.maps.Size(0, -20) }}
-                    onCloseClick={() => setSelectedMarker(null)}
+                    onCloseClick={() => {
+                        setDismissedSelectedMarkerId(selectedMarkerId || null);
+                        setManualSelectedMarker(null);
+                    }}
                 >
                     <div className="min-w-[180px] max-w-[220px]">
                         {selectedMarker.image && (

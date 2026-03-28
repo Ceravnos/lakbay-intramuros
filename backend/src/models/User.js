@@ -71,6 +71,66 @@ const userSchema = new mongoose.Schema(
             type: String,
             default: null,
         },
+        guideApplicationSubmittedAt: {
+            type: Date,
+            default: null,
+        },
+        guideAddress: {
+            regionCode: {
+                type: String,
+                default: null,
+            },
+            regionName: {
+                type: String,
+                default: null,
+            },
+            provinceCode: {
+                type: String,
+                default: null,
+            },
+            provinceName: {
+                type: String,
+                default: null,
+            },
+            cityMunicipalityCode: {
+                type: String,
+                default: null,
+            },
+            cityMunicipalityName: {
+                type: String,
+                default: null,
+            },
+            barangayCode: {
+                type: String,
+                default: null,
+            },
+            barangayName: {
+                type: String,
+                default: null,
+            },
+            streetAddress: {
+                type: String,
+                trim: true,
+                default: null,
+            },
+        },
+        livenessSelfieUrl: {
+            type: String,
+            default: null,
+        },
+        livenessCapturedAt: {
+            type: Date,
+            default: null,
+        },
+        livenessCheckStatus: {
+            type: String,
+            enum: [null, "pending", "verified", "rejected"],
+            default: null,
+        },
+        livenessRejectionReason: {
+            type: String,
+            default: null,
+        },
         rejectionReason: {
             type: String,
             default: null,

@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import { useAuth } from './AuthContext';
+import { useAuth } from './useAuth';
 import toast from 'react-hot-toast';
 
 const SocketContext = createContext(null);
@@ -13,13 +13,8 @@ export const SocketProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (!isAuthenticated || !user) {
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
-        setIsConnected(false);
-      }
-      return;
+    if (!isAuthenticated || !user?._id) {
+      return undefined;
     }
 
     // Create socket connection
@@ -29,6 +24,7 @@ export const SocketProvider = ({ children }) => {
 
     newSocket.on('connect', () => {
       console.log('[Socket] Connected');
+      setSocket(newSocket);
       setIsConnected(true);
 
       // Join user's personal room
@@ -42,6 +38,7 @@ export const SocketProvider = ({ children }) => {
 
     newSocket.on('disconnect', () => {
       console.log('[Socket] Disconnected');
+      setSocket((currentSocket) => currentSocket === newSocket ? null : currentSocket);
       setIsConnected(false);
     });
 
@@ -127,8 +124,6 @@ export const SocketProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('booking-update', { detail: { type: 'started', booking } }));
     });
 
-    setSocket(newSocket);
-
     return () => {
       newSocket.disconnect();
     };
@@ -139,12 +134,4 @@ export const SocketProvider = ({ children }) => {
       {children}
     </SocketContext.Provider>
   );
-};
-
-export const useSocket = () => {
-  const context = useContext(SocketContext);
-  if (!context) {
-    throw new Error('useSocket must be used within a SocketProvider');
-  }
-  return context;
 };

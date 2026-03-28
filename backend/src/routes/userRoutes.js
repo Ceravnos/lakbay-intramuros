@@ -1,9 +1,25 @@
 import express from "express";
+import axios from "axios";
 import { protect } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 import Booking from "../models/Booking.js";
 
 const router = express.Router();
+const PSGC_API_BASE = "https://psgc.gitlab.io/api";
+
+const mapPsgcOptions = (items = []) => (
+  items
+    .map((item) => ({
+      code: item.code,
+      name: item.name,
+    }))
+    .sort((leftItem, rightItem) => leftItem.name.localeCompare(rightItem.name))
+);
+
+const fetchPsgcOptions = async (path) => {
+  const response = await axios.get(`${PSGC_API_BASE}${path}`);
+  return mapPsgcOptions(Array.isArray(response.data) ? response.data : []);
+};
 
 // Get all approved guides (for booking) - includes unavailable dates and slot availability
 router.get("/guides", protect, async (req, res) => {
@@ -13,6 +29,7 @@ router.get("/guides", protect, async (req, res) => {
     const guides = await User.find({
       role: "guide",
       guideStatus: "approved",
+      _id: { $ne: req.user._id },
     })
       .select("fullName email contactNumber totalStars totalRatings unavailableDates profilePicture")
       .lean();
@@ -90,6 +107,67 @@ router.get("/guides/:guideId", protect, async (req, res) => {
   } catch (error) {
     console.error("Error fetching guide:", error);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/psgc/regions", protect, async (req, res) => {
+  try {
+    const regions = await fetchPsgcOptions("/regions/");
+    res.json(regions);
+  } catch (error) {
+    console.error("Error fetching PSGC regions:", error.response?.data || error.message);
+    res.status(500).json({ message: "Failed to load PSGC regions" });
+  }
+});
+
+router.get("/psgc/provinces", protect, async (req, res) => {
+  try {
+    const { regionCode } = req.query;
+
+    if (!regionCode) {
+      return res.status(400).json({ message: "regionCode is required" });
+    }
+
+    const provinces = await fetchPsgcOptions(`/regions/${regionCode}/provinces/`);
+    res.json(provinces);
+  } catch (error) {
+    console.error("Error fetching PSGC provinces:", error.response?.data || error.message);
+    res.status(500).json({ message: "Failed to load PSGC provinces" });
+  }
+});
+
+router.get("/psgc/cities-municipalities", protect, async (req, res) => {
+  try {
+    const { regionCode, provinceCode } = req.query;
+
+    if (!regionCode && !provinceCode) {
+      return res.status(400).json({ message: "regionCode or provinceCode is required" });
+    }
+
+    const endpointPath = provinceCode
+      ? `/provinces/${provinceCode}/cities-municipalities/`
+      : `/regions/${regionCode}/cities-municipalities/`;
+    const citiesMunicipalities = await fetchPsgcOptions(endpointPath);
+    res.json(citiesMunicipalities);
+  } catch (error) {
+    console.error("Error fetching PSGC cities/municipalities:", error.response?.data || error.message);
+    res.status(500).json({ message: "Failed to load PSGC cities and municipalities" });
+  }
+});
+
+router.get("/psgc/barangays", protect, async (req, res) => {
+  try {
+    const { cityMunicipalityCode } = req.query;
+
+    if (!cityMunicipalityCode) {
+      return res.status(400).json({ message: "cityMunicipalityCode is required" });
+    }
+
+    const barangays = await fetchPsgcOptions(`/cities-municipalities/${cityMunicipalityCode}/barangays/`);
+    res.json(barangays);
+  } catch (error) {
+    console.error("Error fetching PSGC barangays:", error.response?.data || error.message);
+    res.status(500).json({ message: "Failed to load PSGC barangays" });
   }
 });
 

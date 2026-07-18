@@ -12,6 +12,11 @@ const paymentSchema = new mongoose.Schema(
             ref: "User",
             required: true,
         },
+        guideId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
         amount: {
             type: Number,
             required: true,
@@ -37,9 +42,29 @@ const paymentSchema = new mongoose.Schema(
             type: String,
             default: null,
         },
+        paidAt: {
+            type: Date,
+            default: null,
+        },
+        guidePayoutStatus: {
+            type: String,
+            enum: ["unavailable", "available", "sandbox_paid_out"],
+            default: "unavailable",
+        },
+        guidePayoutAt: {
+            type: Date,
+            default: null,
+        },
+        guidePayoutBatchId: {
+            type: String,
+            default: null,
+        },
     },
     { timestamps: true }
 );
+
+paymentSchema.index({ bookingId: 1, createdAt: -1 });
+paymentSchema.index({ guideId: 1, status: 1, guidePayoutStatus: 1, paidAt: -1 });
 
 const Payment = mongoose.model("Payment", paymentSchema);
 

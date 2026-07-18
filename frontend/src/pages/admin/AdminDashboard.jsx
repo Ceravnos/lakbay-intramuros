@@ -4,14 +4,73 @@ import {
   Shield, Users, Clock, CheckCircle, XCircle, 
   LogOut, Eye, RefreshCw, Search,
   UserCheck, UserX, FileText, MapPin, Calendar,
-  Loader2, X, FileQuestion, Trash2, Edit3, 
+  Loader2, X, FileQuestion, Trash2, Edit3, CreditCard,
   UserCog, AlertTriangle, ShieldCheck, ShieldOff
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 import api from "../../lib/axios";
 
+const createEmptyBookingReport = (currentYear) => ({
+  availableYears: [currentYear],
+  summary: {
+    totalBookings: 0,
+    totalParticipants: 0,
+    pendingBookings: 0,
+    acceptedBookings: 0,
+    awaitingPaymentBookings: 0,
+    scheduledBookings: 0,
+    activeBookings: 0,
+    completedBookings: 0,
+    rejectedBookings: 0,
+    cancelledBookings: 0,
+    paidBookings: 0,
+    totalPaidAmount: 0,
+  },
+  reports: [],
+});
+
+const REPORT_MONTH_OPTIONS = [
+  { value: "all", label: "All months" },
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
+const formatGuideAddress = (guideAddress) => {
+  if (!guideAddress?.regionName) {
+    return 'Not provided';
+  }
+
+  return [
+    guideAddress.streetAddress,
+    guideAddress.barangayName,
+    guideAddress.cityMunicipalityName,
+    guideAddress.provinceName,
+    guideAddress.regionName,
+  ]
+    .filter(Boolean)
+    .join(', ');
+};
+
+const getLivenessStatusLabel = (status) => {
+  if (status === 'verified') return 'Verified';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'pending') return 'Pending Review';
+  return 'Not Submitted';
+};
+
 const AdminDashboard = () => {
+  const currentYear = new Date().getFullYear();
   const [stats, setStats] = useState({
     totalGuides: 0,
     activeGuides: 0,
@@ -24,9 +83,7 @@ const AdminDashboard = () => {
     pendingBookings: 0,
     completedBookings: 0,
   });
-  const [pendingGuides, setPendingGuides] = useState([]);
   const [allGuides, setAllGuides] = useState([]);
-  const [activeGuides, setActiveGuides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
@@ -45,12 +102,19 @@ const AdminDashboard = () => {
   const [userToDelete, setUserToDelete] = useState(null);
   const [mainTab, setMainTab] = useState("guides");
   const [editedUserData, setEditedUserData] = useState({}); // "guides" or "users"
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportFilters, setReportFilters] = useState({ month: "all", year: String(currentYear) });
+  const [bookingReport, setBookingReport] = useState(() => createEmptyBookingReport(currentYear));
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    fetchBookingReport();
+  }, [reportFilters.month, reportFilters.year]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -63,11 +127,9 @@ const AdminDashboard = () => {
       api.get("/admin/guides"),
       api.get("/admin/active-guides"),
       api.get("/bookings/stats").catch(() => ({ data: {} })),
-    ]).then(([statsRes, pendingRes, allRes, activeRes, bookingStatsRes]) => {
+    ]).then(([statsRes, , allRes, , bookingStatsRes]) => {
       setStats(statsRes.data);
-      setPendingGuides(pendingRes.data);
       setAllGuides(allRes.data);
-      setActiveGuides(activeRes.data);
       setBookingStats(bookingStatsRes.data);
       setLoading(false);
     }).catch((error) => {
@@ -88,6 +150,39 @@ const AdminDashboard = () => {
       });
 
     await Promise.all([guidesPromise, usersPromise]);
+  };
+
+  const fetchBookingReport = async (filters = reportFilters) => {
+    setReportLoading(true);
+    try {
+      const params = {};
+
+      if (filters.month !== "all") {
+        params.month = filters.month;
+      }
+
+      if (filters.year && filters.year !== "all") {
+        params.year = filters.year;
+      }
+
+      const reportRes = await api.get("/admin/booking-reports", { params });
+      setBookingReport({
+        availableYears: reportRes.data.availableYears?.length
+          ? reportRes.data.availableYears
+          : [currentYear],
+        summary: {
+          ...createEmptyBookingReport(currentYear).summary,
+          ...(reportRes.data.summary || {}),
+        },
+        reports: reportRes.data.reports || [],
+      });
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to fetch booking reports");
+      setBookingReport(createEmptyBookingReport(currentYear));
+    } finally {
+      setReportLoading(false);
+    }
   };
 
   const handleApprove = async (guideId) => {
@@ -229,6 +324,11 @@ const AdminDashboard = () => {
     u.email?.toLowerCase().includes(userSearchTerm.toLowerCase())
   );
 
+  const reportSummary = bookingReport.summary || createEmptyBookingReport(currentYear).summary;
+  const reportYears = bookingReport.availableYears?.length
+    ? bookingReport.availableYears
+    : [currentYear];
+
   const getStatusBadge = (status) => {
     switch (status) {
       case "pending":
@@ -255,15 +355,49 @@ const AdminDashboard = () => {
     }
   };
 
-  const getAccountStatusBadge = (status) => {
+  const getBookingStatusBadge = (status) => {
     switch (status) {
+      case "pending":
+        return <span className="px-2.5 py-1 text-xs font-medium bg-sand-100 text-sand-700 border border-sand-200 rounded-full">Pending</span>;
+      case "awaiting_payment":
+        return <span className="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full">Awaiting Payment</span>;
+      case "scheduled":
+        return <span className="px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-full">Scheduled</span>;
       case "active":
-        return <span className="px-2.5 py-1 text-xs font-medium bg-green-50 text-green-600 border border-green-200 rounded-full">Active</span>;
-      case "suspended":
-        return <span className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-600 border border-red-200 rounded-full">Suspended</span>;
+        return <span className="px-2.5 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full">Active</span>;
+      case "completed":
+        return <span className="px-2.5 py-1 text-xs font-medium bg-sage-100 text-sage-700 border border-sage-200 rounded-full">Completed</span>;
+      case "rejected":
+        return <span className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-600 border border-red-200 rounded-full">Rejected</span>;
+      case "cancelled":
+        return <span className="px-2.5 py-1 text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200 rounded-full">Cancelled</span>;
       default:
-        return <span className="px-2.5 py-1 text-xs font-medium bg-green-50 text-green-600 border border-green-200 rounded-full">Active</span>;
+        return <span className="px-2.5 py-1 text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200 rounded-full">{status}</span>;
     }
+  };
+
+  const formatReportDate = (date) => {
+    if (!date) return "—";
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const formatReportTime = (timeSlot) => {
+    if (timeSlot === "AM") return "Morning";
+    if (timeSlot === "PM") return "Afternoon";
+    return timeSlot || "—";
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount || 0);
   };
 
   return (
@@ -311,6 +445,17 @@ const AdminDashboard = () => {
           >
             <UserCheck className="w-4 h-4" />
             Guide Management
+          </button>
+          <button
+            onClick={() => setMainTab("reports")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              mainTab === "reports"
+                ? "bg-stone-800 text-white"
+                : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            Reports
           </button>
           <button
             onClick={() => setMainTab("users")}
@@ -516,6 +661,187 @@ const AdminDashboard = () => {
         </>
         )}
 
+        {mainTab === "reports" && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-stone-200 p-5">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-stone-800">Booking Reports</h2>
+                <p className="text-stone-500 text-sm">View who joined, assigned guides, destinations, schedules, and payments.</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={reportFilters.month}
+                  onChange={(e) => setReportFilters((prev) => ({ ...prev, month: e.target.value }))}
+                  className="px-4 py-2 bg-stone-50 border border-stone-200 rounded-lg text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:border-transparent"
+                >
+                  {REPORT_MONTH_OPTIONS.map((monthOption) => (
+                    <option key={monthOption.value} value={monthOption.value}>
+                      {monthOption.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={reportFilters.year}
+                  onChange={(e) => setReportFilters((prev) => ({ ...prev, year: e.target.value }))}
+                  className="px-4 py-2 bg-stone-50 border border-stone-200 rounded-lg text-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:border-transparent"
+                >
+                  {reportYears.map((yearOption) => (
+                    <option key={yearOption} value={yearOption}>
+                      {yearOption}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => fetchBookingReport()}
+                  disabled={reportLoading}
+                  className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-5 h-5 ${reportLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl border border-stone-200 p-5">
+              <div className="w-10 h-10 bg-stone-100 rounded-lg flex items-center justify-center mb-3">
+                <Calendar className="w-5 h-5 text-stone-600" />
+              </div>
+              <p className="text-3xl font-semibold text-stone-800">{reportSummary.totalBookings}</p>
+              <p className="text-stone-500 text-sm mt-1">Total Bookings</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-stone-200 p-5">
+              <div className="w-10 h-10 bg-sage-100 rounded-lg flex items-center justify-center mb-3">
+                <Users className="w-5 h-5 text-sage-600" />
+              </div>
+              <p className="text-3xl font-semibold text-stone-800">{reportSummary.totalParticipants}</p>
+              <p className="text-stone-500 text-sm mt-1">Participants</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-stone-200 p-5">
+              <div className="w-10 h-10 bg-sage-100 rounded-lg flex items-center justify-center mb-3">
+                <CheckCircle className="w-5 h-5 text-sage-600" />
+              </div>
+              <p className="text-3xl font-semibold text-stone-800">{reportSummary.completedBookings}</p>
+              <p className="text-stone-500 text-sm mt-1">Completed Tours</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-stone-200 p-5">
+              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center mb-3">
+                <CreditCard className="w-5 h-5 text-emerald-600" />
+              </div>
+              <p className="text-3xl font-semibold text-stone-800">{formatCurrency(reportSummary.totalPaidAmount)}</p>
+              <p className="text-stone-500 text-sm mt-1">Paid Revenue</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="bg-white rounded-xl border border-stone-200 p-4">
+              <p className="text-2xl font-semibold text-stone-800">{reportSummary.pendingBookings}</p>
+              <p className="text-stone-500 text-xs mt-1">Pending</p>
+            </div>
+            <div className="bg-white rounded-xl border border-stone-200 p-4">
+              <p className="text-2xl font-semibold text-stone-800">{reportSummary.awaitingPaymentBookings}</p>
+              <p className="text-stone-500 text-xs mt-1">Awaiting Payment</p>
+            </div>
+            <div className="bg-white rounded-xl border border-stone-200 p-4">
+              <p className="text-2xl font-semibold text-stone-800">{reportSummary.scheduledBookings}</p>
+              <p className="text-stone-500 text-xs mt-1">Scheduled</p>
+            </div>
+            <div className="bg-white rounded-xl border border-stone-200 p-4">
+              <p className="text-2xl font-semibold text-stone-800">{reportSummary.activeBookings}</p>
+              <p className="text-stone-500 text-xs mt-1">Active</p>
+            </div>
+            <div className="bg-white rounded-xl border border-stone-200 p-4">
+              <p className="text-2xl font-semibold text-stone-800">{reportSummary.rejectedBookings}</p>
+              <p className="text-stone-500 text-xs mt-1">Rejected</p>
+            </div>
+            <div className="bg-white rounded-xl border border-stone-200 p-4">
+              <p className="text-2xl font-semibold text-stone-800">{reportSummary.paidBookings}</p>
+              <p className="text-stone-500 text-xs mt-1">Paid Bookings</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+            <div className="p-5 border-b border-stone-200">
+              <h3 className="text-lg font-semibold text-stone-800">Detailed Booking Report</h3>
+              <p className="text-stone-500 text-sm mt-1">Filtered by tour date using the selected month and year.</p>
+            </div>
+
+            {reportLoading ? (
+              <div className="p-12 text-center">
+                <Loader2 className="w-6 h-6 text-stone-400 animate-spin mx-auto mb-2" />
+                <p className="text-stone-500 text-sm">Loading reports...</p>
+              </div>
+            ) : bookingReport.reports.length === 0 ? (
+              <div className="p-12 text-center">
+                <FileText className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                <p className="text-stone-500">No bookings found for the selected filters</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1100px]">
+                  <thead className="bg-stone-50 border-b border-stone-200">
+                    <tr>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Tourist</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Guide</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Where</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">When</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Joined</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Status</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Payment</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {bookingReport.reports.map((report) => (
+                      <tr key={report._id} className="hover:bg-stone-50 transition-colors align-top">
+                        <td className="px-5 py-4">
+                          <div>
+                            <p className="font-medium text-stone-800">{report.tourist?.fullName || "Unknown Tourist"}</p>
+                            <p className="text-stone-500 text-sm">{report.tourist?.email || "—"}</p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div>
+                            <p className="font-medium text-stone-800">{report.guide?.fullName || "Unassigned"}</p>
+                            <p className="text-stone-500 text-sm">{report.guide?.email || "—"}</p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="max-w-xs">
+                            <p className="font-medium text-stone-800">{report.title}</p>
+                            <p className="text-stone-500 text-sm mt-1">{report.routeSummary}</p>
+                            <p className="text-stone-400 text-xs mt-1">Meeting point: {report.meetingPoint || "Not specified"}</p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="text-sm text-stone-700">
+                            <p className="font-medium">{formatReportDate(report.preferredDate)}</p>
+                            <p className="text-stone-500 mt-1">{formatReportTime(report.timeSlot)}</p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-stone-700 text-sm">{report.numberOfPeople}</td>
+                        <td className="px-5 py-4">{getBookingStatusBadge(report.status)}</td>
+                        <td className="px-5 py-4">
+                          {report.payment ? (
+                            <div>
+                              <p className="font-medium text-stone-800">{formatCurrency(report.payment.amount)}</p>
+                              <p className="text-stone-500 text-sm capitalize mt-1">{report.payment.status}</p>
+                              <p className="text-stone-400 text-xs mt-1">Paid at: {formatReportDate(report.payment.paidAt)}</p>
+                            </div>
+                          ) : (
+                            <span className="text-stone-400 text-sm">No payment yet</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+        )}
+
         {/* User Management Section */}
         {mainTab === "users" && (
         <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
@@ -665,12 +991,20 @@ const AdminDashboard = () => {
                 <div className="bg-stone-50 rounded-xl p-4">
                   <p className="text-stone-500 text-sm mb-1">Application Date</p>
                   <p className="text-stone-800 font-medium">
-                    {new Date(selectedGuide.createdAt).toLocaleDateString('en-US', {
+                    {new Date(selectedGuide.guideApplicationSubmittedAt || selectedGuide.createdAt).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric'
                     })}
                   </p>
+                </div>
+                <div className="bg-stone-50 rounded-xl p-4 sm:col-span-2">
+                  <p className="text-stone-500 text-sm mb-1">Guide Address</p>
+                  <p className="text-stone-800 font-medium">{formatGuideAddress(selectedGuide.guideAddress)}</p>
+                </div>
+                <div className="bg-stone-50 rounded-xl p-4">
+                  <p className="text-stone-500 text-sm mb-1">Liveness Review</p>
+                  <p className="text-stone-800 font-medium">{getLivenessStatusLabel(selectedGuide.livenessCheckStatus)}</p>
                 </div>
               </div>
 
@@ -700,6 +1034,21 @@ const AdminDashboard = () => {
                         View Document
                       </a>
                     )
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-stone-500 text-sm mb-3">Live Selfie Capture</p>
+                <div className="bg-stone-50 rounded-xl p-4">
+                  {selectedGuide.livenessSelfieUrl ? (
+                    <img
+                      src={selectedGuide.livenessSelfieUrl}
+                      alt="Liveness capture"
+                      className="w-full max-h-72 object-contain rounded-lg bg-white border border-stone-200"
+                    />
+                  ) : (
+                    <p className="text-stone-500 text-sm">No liveness selfie submitted.</p>
                   )}
                 </div>
               </div>

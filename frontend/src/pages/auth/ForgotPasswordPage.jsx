@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { MapPin, Mail, KeyRound, ArrowLeft, CheckCircle } from "lucide-react";
 import toast from "react-hot-toast";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 
 const ForgotPasswordPage = () => {
     const [step, setStep] = useState(1); // 1: email, 2: OTP, 3: new password

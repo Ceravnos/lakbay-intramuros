@@ -3,11 +3,11 @@ import { Link, useNavigate, useParams } from "react-router";
 import { ArrowLeft, Loader2, Trash2, MapPin, Calendar, Users, UserCheck, X } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../lib/axios";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 import Navbar from "../components/Navbar";
 
 const TravelDetailPage = () => {
-  const { user, isAuthenticated, isTourist } = useAuth();
+  const { isAuthenticated, isTourist } = useAuth();
   const [travel, setTravel] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   X, MapPin, Clock, Users, Calendar, Navigation, 
-  Send, Loader2, Plus, Trash2, GripVertical, Search
+  Send, Loader2, Plus, Trash2, GripVertical, Search, Route
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { INTRAMUROS_LOCATIONS } from '../data/locations';
+import { optimizeLocationsNearestNeighbor, routesMatchByOrder } from '../lib/routeOptimization';
 
 const ItineraryEditModal = ({
   isOpen,
@@ -13,31 +14,36 @@ const ItineraryEditModal = ({
   onSubmitRevision,
   loading = false,
 }) => {
-  const [revisionNote, setRevisionNote] = useState('');
-  const [locations, setLocations] = useState([]);
-  const [preferredDate, setPreferredDate] = useState('');
-  const [numberOfPeople, setNumberOfPeople] = useState(1);
+  const [draft, setDraft] = useState({
+    bookingId: null,
+    revisionNote: '',
+    locations: null,
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverItem, setDragOverItem] = useState(null);
 
-  // Initialize with current itinerary data
-  useEffect(() => {
-    if (booking?.itineraryId) {
-      const itinerary = booking.itineraryId;
-      setLocations(itinerary.locations?.map((loc, idx) => ({
-        ...loc,
-        order: loc.order ?? idx,
-      })) || []);
-      setPreferredDate(itinerary.preferredDate ? new Date(itinerary.preferredDate).toISOString().split('T')[0] : '');
-      setNumberOfPeople(itinerary.numberOfPeople || booking.tripDetails?.numberOfPeople || 1);
-    }
-  }, [booking]);
-
   if (!isOpen || !booking) return null;
 
   const itinerary = booking.itineraryId;
-  const tripDetails = booking.tripDetails;
+  const preferredDate = itinerary?.preferredDate ? new Date(itinerary.preferredDate).toISOString().split('T')[0] : '';
+  const numberOfPeople = itinerary?.numberOfPeople || booking.tripDetails?.numberOfPeople || 1;
+  const initialLocations = itinerary?.locations?.map((loc, idx) => ({
+    ...loc,
+    order: loc.order ?? idx,
+  })) || [];
+  const hasCurrentDraft = draft.bookingId === booking._id;
+  const revisionNote = hasCurrentDraft ? draft.revisionNote : '';
+  const locations = hasCurrentDraft && Array.isArray(draft.locations) ? draft.locations : initialLocations;
+
+  const updateDraft = (updates) => {
+    setDraft((previousDraft) => ({
+      bookingId: booking._id,
+      revisionNote: previousDraft.bookingId === booking._id ? previousDraft.revisionNote : '',
+      locations: previousDraft.bookingId === booking._id ? previousDraft.locations : null,
+      ...updates,
+    }));
+  };
 
   // Filter available locations
   const filteredLandmarks = INTRAMUROS_LOCATIONS.filter(landmark => {
@@ -64,14 +70,15 @@ const ItineraryEditModal = ({
       order: locations.length,
       notes: '',
     };
-    setLocations([...locations, newLocation]);
+    updateDraft({ locations: [...locations, newLocation] });
   };
 
   const removeLocation = (placeId) => {
-    setLocations(prev => 
-      prev.filter(loc => loc.placeId !== placeId)
-        .map((loc, idx) => ({ ...loc, order: idx }))
-    );
+    updateDraft({
+      locations: locations
+        .filter(loc => loc.placeId !== placeId)
+        .map((loc, idx) => ({ ...loc, order: idx })),
+    });
   };
 
   // Drag and drop handlers
@@ -91,10 +98,28 @@ const ItineraryEditModal = ({
       const newLocations = [...locations];
       const [draggedLocation] = newLocations.splice(draggedItem, 1);
       newLocations.splice(dragOverItem, 0, draggedLocation);
-      setLocations(newLocations.map((loc, idx) => ({ ...loc, order: idx })));
+      updateDraft({ locations: newLocations.map((loc, idx) => ({ ...loc, order: idx })) });
     }
     setDraggedItem(null);
     setDragOverItem(null);
+  };
+
+  const handleOptimizeRoute = () => {
+    if (locations.length < 3) {
+      toast.error('Add at least 3 stops to optimize the route');
+      return;
+    }
+
+    const currentOrderedLocations = [...locations].sort((leftLocation, rightLocation) => leftLocation.order - rightLocation.order);
+    const optimizedLocations = optimizeLocationsNearestNeighbor(currentOrderedLocations);
+
+    if (routesMatchByOrder(currentOrderedLocations, optimizedLocations)) {
+      toast('Route is already optimized', { icon: '🧭' });
+      return;
+    }
+
+    updateDraft({ locations: optimizedLocations });
+    toast.success('Revision route optimized');
   };
 
   const handleSubmit = () => {
@@ -113,15 +138,6 @@ const ItineraryEditModal = ({
     };
 
     onSubmitRevision(booking._id, revisionNote, proposedItinerary);
-  };
-
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
   };
 
   // Check if there are changes
@@ -238,7 +254,7 @@ const ItineraryEditModal = ({
                 </label>
                 <textarea
                   value={revisionNote}
-                  onChange={(e) => setRevisionNote(e.target.value)}
+                  onChange={(e) => updateDraft({ revisionNote: e.target.value })}
                   placeholder="Explain why you're suggesting these changes..."
                   rows={3}
                   className="w-full px-3 py-2 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-500 resize-none text-sm"
@@ -312,6 +328,14 @@ const ItineraryEditModal = ({
               Cancel
             </button>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleOptimizeRoute}
+                disabled={loading || locations.length < 3}
+                className="flex items-center gap-2 px-4 py-2 border border-stone-300 text-stone-700 font-medium rounded-lg hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Route className="w-4 h-4" />
+                Optimize
+              </button>
               {hasChanges() && (
                 <span className="text-xs text-sage-600 bg-sage-100 px-2 py-1 rounded-full">
                   Changes made

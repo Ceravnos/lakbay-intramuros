@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { MapPin, Plus, Calendar, Clock, ChevronRight, Loader2, Navigation, Users, Trash2, XCircle, CreditCard } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/useAuth'
 
 import Navbar from '../components/Navbar'
 import RateLimitedUI from '../components/RateLimitedUI'
@@ -103,7 +103,7 @@ const RatingModal = ({ booking, onClose, onSubmit, submitting }) => {
 
 
 const HomePage = () => {
-    const { user, isAuthenticated, isGuideMode } = useAuth();
+    const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [isRateLimited, setIsRateLimited] = useState(false);
@@ -247,7 +247,7 @@ const HomePage = () => {
                 const verifyPayment = async () => {
                     try {
                         await api.post(`/payments/verify/${bookingId}`);
-                    } catch (error) {
+                    } catch {
                         // Silent - socket event will handle notification
                     }
                     fetchData({ background: true });
@@ -362,7 +362,7 @@ const HomePage = () => {
             setItineraries(prev => prev.filter(item => item._id !== deleteItineraryId));
             setDeleteItineraryModalOpen(false);
             setDeleteItineraryId(null);
-        } catch (error) {
+        } catch {
             toast.error("Failed to delete itinerary");
         } finally {
             setDeleteItineraryLoading(false);
@@ -384,7 +384,7 @@ const HomePage = () => {
             upsertBooking(res.data.booking);
             setCancelModalOpen(false);
             setCancelBookingId(null);
-        } catch (error) {
+        } catch {
             toast.error("Failed to cancel booking");
         } finally {
             setCancelLoading(false);

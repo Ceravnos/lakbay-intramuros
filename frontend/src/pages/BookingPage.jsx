@@ -8,11 +8,13 @@ import {
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../lib/axios';
+import { useAuth } from '../context/useAuth';
 
 const BookingPage = () => {
     const { itineraryId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
+    const { user } = useAuth();
     
     const [itinerary, setItinerary] = useState(null);
     const [selectedGuide, setSelectedGuide] = useState(null);
@@ -158,7 +160,7 @@ const BookingPage = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch itinerary details
+            // Fetch itinerary
             const itineraryRes = await api.get(`/itineraries/${itineraryId}`);
             setItinerary(itineraryRes.data);
             
@@ -169,7 +171,7 @@ const BookingPage = () => {
                     numberOfPeople: itineraryRes.data.numberOfPeople || 1,
                 }));
             }
-        } catch (error) {
+        } catch {
             toast.error('Failed to load itinerary');
             navigate('/dashboard');
         } finally {
@@ -190,7 +192,7 @@ const BookingPage = () => {
             const guidesRes = await api.get(`/users/guides?date=${date}`);
             setAllGuides(guidesRes.data);
             setGuidesLoadedForDate(date);
-        } catch (err) {
+        } catch {
             console.log('Could not fetch guides for date');
         } finally {
             if (!background) {
@@ -230,6 +232,8 @@ const BookingPage = () => {
         if (!bookingDetails.preferredDate || allGuides.length === 0) return [];
         
         return allGuides.filter(guide => {
+            if (guide._id === user?._id) return false;
+
             // Already filtered out fully booked guides from backend
             // Now filter by unavailable dates
             if (!guide.unavailableDates || guide.unavailableDates.length === 0) return true;
@@ -244,7 +248,7 @@ const BookingPage = () => {
             
             return !isUnavailable;
         });
-    }, [bookingDetails.preferredDate, allGuides]);
+    }, [bookingDetails.preferredDate, allGuides, user?._id]);
 
     // Check if selected time slot is available for selected guide
     const isSlotAvailable = (slot) => {
@@ -292,6 +296,12 @@ const BookingPage = () => {
 
         if (!selectedGuide && !isRevisionMode) {
             toast.error('Please select a guide');
+            return;
+        }
+
+        if (selectedGuide?._id === user?._id) {
+            toast.error('You cannot book yourself as your own guide');
+            setSelectedGuide(null);
             return;
         }
 

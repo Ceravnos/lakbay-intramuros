@@ -2,6 +2,28 @@ import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
 import { sendPasswordResetOtpEmail } from "../utils/sendPasswordResetOtpEmail.js";
 
+const normalizeGuideAddress = (guideAddress = {}) => ({
+    regionCode: guideAddress?.regionCode?.trim?.() || null,
+    regionName: guideAddress?.regionName?.trim?.() || null,
+    provinceCode: guideAddress?.provinceCode?.trim?.() || null,
+    provinceName: guideAddress?.provinceName?.trim?.() || null,
+    cityMunicipalityCode: guideAddress?.cityMunicipalityCode?.trim?.() || null,
+    cityMunicipalityName: guideAddress?.cityMunicipalityName?.trim?.() || null,
+    barangayCode: guideAddress?.barangayCode?.trim?.() || null,
+    barangayName: guideAddress?.barangayName?.trim?.() || null,
+    streetAddress: guideAddress?.streetAddress?.trim?.() || null,
+});
+
+const isGuideAddressComplete = (guideAddress = {}) => Boolean(
+    guideAddress.regionCode
+    && guideAddress.regionName
+    && guideAddress.cityMunicipalityCode
+    && guideAddress.cityMunicipalityName
+    && guideAddress.barangayCode
+    && guideAddress.barangayName
+    && guideAddress.streetAddress
+);
+
 export const touchLastActivity = async (user) => {
     user.lastActivityAt = new Date();
     await user.save({ validateModifiedOnly: true });
@@ -41,6 +63,10 @@ export const register = async (req, res) => {
             role: user.role,
             guideStatus: user.guideStatus,
             isGuideMode: user.isGuideMode,
+            guideAddress: user.guideAddress,
+            guideApplicationSubmittedAt: user.guideApplicationSubmittedAt,
+            livenessCheckStatus: user.livenessCheckStatus,
+            livenessCapturedAt: user.livenessCapturedAt,
             token,
         });
     } catch (error) {
@@ -53,11 +79,20 @@ export const register = async (req, res) => {
 // @route   POST /api/auth/apply-guide
 export const applyForGuide = async (req, res) => {
     try {
-        const { contactNumber, accreditationFile, accreditationFileName } = req.body;
+        const { contactNumber, accreditationFile, accreditationFileName, guideAddress, livenessSelfie, livenessCapturedAt } = req.body;
         const userId = req.user._id;
+        const normalizedGuideAddress = normalizeGuideAddress(guideAddress);
 
-        if (!contactNumber || !accreditationFile) {
-            return res.status(400).json({ message: "Please provide contact number and accreditation document" });
+        if (!contactNumber || !accreditationFile || !livenessSelfie) {
+            return res.status(400).json({ message: "Please provide contact number, accreditation document, and liveness selfie" });
+        }
+
+        if (!isGuideAddressComplete(normalizedGuideAddress)) {
+            return res.status(400).json({ message: "Please complete your PSGC-based guide address" });
+        }
+
+        if (!livenessSelfie.startsWith("data:image/")) {
+            return res.status(400).json({ message: "Invalid liveness selfie format" });
         }
 
         const user = await User.findById(userId);
@@ -73,16 +108,33 @@ export const applyForGuide = async (req, res) => {
             return res.status(400).json({ message: "You are already an approved guide" });
         }
 
+        if (!user.profilePicture) {
+            return res.status(400).json({ message: "A profile picture is required before applying as a guide" });
+        }
+
+        const normalizedLivenessCapturedAt = livenessCapturedAt ? new Date(livenessCapturedAt) : new Date();
+
         user.guideStatus = "pending";
         user.contactNumber = contactNumber;
         user.accreditationUrl = accreditationFile;
         user.accreditationFileName = accreditationFileName || "credential.pdf";
+        user.guideApplicationSubmittedAt = new Date();
+        user.guideAddress = normalizedGuideAddress;
+        user.livenessSelfieUrl = livenessSelfie;
+        user.livenessCapturedAt = Number.isNaN(normalizedLivenessCapturedAt.getTime()) ? new Date() : normalizedLivenessCapturedAt;
+        user.livenessCheckStatus = "pending";
+        user.livenessRejectionReason = null;
         user.rejectionReason = null;
+        user.documentRequestReason = null;
         await user.save();
 
         res.json({
             message: "Guide application submitted successfully! Please wait for admin approval.",
             guideStatus: user.guideStatus,
+            guideApplicationSubmittedAt: user.guideApplicationSubmittedAt,
+            guideAddress: user.guideAddress,
+            livenessCheckStatus: user.livenessCheckStatus,
+            livenessCapturedAt: user.livenessCapturedAt,
         });
     } catch (error) {
         console.error("Apply for guide error:", error);
@@ -161,6 +213,12 @@ export const login = async (req, res) => {
             contactNumber: user.contactNumber,
             isGuideMode: user.isGuideMode,
             activityStatus: user.activityStatus,
+            guideAddress: user.guideAddress,
+            guideApplicationSubmittedAt: user.guideApplicationSubmittedAt,
+            documentRequestReason: user.documentRequestReason,
+            rejectionReason: user.rejectionReason,
+            livenessCheckStatus: user.livenessCheckStatus,
+            livenessCapturedAt: user.livenessCapturedAt,
             personalization: user.personalization,
             token,
         });

@@ -5,6 +5,7 @@ import Itinerary from "../models/Itinerary.js";
 import { emitToGuide, emitToUser } from "../config/socket.js";
 
 const GUIDE_DASHBOARD_BOOKING_SELECT = "_id touristId itineraryId status timeSlot tripDetails progress completedAt rejectedAt createdAt startedAt";
+const GUIDE_DASHBOARD_PAYMENT_SELECT = "_id bookingId amount currency status paidAt guidePayoutStatus guidePayoutAt guidePayoutBatchId createdAt";
 const GUIDE_DASHBOARD_POPULATE = [
     { path: "touristId", select: "fullName email phoneNumber" },
     { path: "itineraryId", select: "name locations preferredDate numberOfPeople" },
@@ -15,6 +16,52 @@ const TOURIST_BOOKING_POPULATE = [
     { path: "itineraryId", select: "name locations preferredDate numberOfPeople description" },
 ];
 const ITINERARY_CONTEXT_STATUSES = ["pending", "accepted", "awaiting_payment", "paid", "scheduled", "active"];
+
+const normalizeGuidePayment = (payment, guideId) => {
+    if (!payment) {
+        return null;
+    }
+
+    const normalizedGuideId = payment.guideId || guideId || null;
+    const normalizedPayoutStatus = payment.status === "paid"
+        ? payment.guidePayoutStatus === "sandbox_paid_out"
+            ? "sandbox_paid_out"
+            : "available"
+        : payment.guidePayoutStatus || "unavailable";
+
+    return {
+        ...payment,
+        guideId: normalizedGuideId,
+        guidePayoutStatus: normalizedPayoutStatus,
+    };
+};
+
+const buildGuideCashoutHistory = (payments) => {
+    const cashoutMap = new Map();
+
+    payments
+        .filter((payment) => payment.status === "paid" && payment.guidePayoutStatus === "sandbox_paid_out")
+        .forEach((payment) => {
+            const batchId = payment.guidePayoutBatchId || payment._id.toString();
+            const existingCashout = cashoutMap.get(batchId) || {
+                batchId,
+                amount: 0,
+                currency: payment.currency || "PHP",
+                paymentCount: 0,
+                paidAt: payment.guidePayoutAt || payment.paidAt || payment.createdAt,
+            };
+
+            existingCashout.amount += payment.amount || 0;
+            existingCashout.paymentCount += 1;
+            existingCashout.paidAt = existingCashout.paidAt || payment.guidePayoutAt || payment.paidAt || payment.createdAt;
+
+            cashoutMap.set(batchId, existingCashout);
+        });
+
+    return Array.from(cashoutMap.values()).sort(
+        (leftCashout, rightCashout) => new Date(rightCashout.paidAt || 0) - new Date(leftCashout.paidAt || 0)
+    );
+};
 
 // @desc    Create a new booking request (Tourist only)
 // @route   POST /api/bookings
@@ -50,6 +97,9 @@ export const createBooking = async (req, res) => {
             const guide = await User.findById(guideId);
             if (!guide) {
                 return res.status(404).json({ message: "Selected guide not found" });
+            }
+            if (guide._id.toString() === touristId.toString()) {
+                return res.status(400).json({ message: "You cannot book yourself as your own guide" });
             }
             if (guide.role !== "guide" || guide.guideStatus !== "approved") {
                 return res.status(400).json({ message: "Selected user is not an approved guide" });
@@ -209,13 +259,50 @@ export const getGuideDashboardData = async (req, res) => {
             .populate(GUIDE_DASHBOARD_POPULATE)
             .lean();
 
+        const dashboardBookingIds = dashboardBookings.map((booking) => booking._id);
+
+        const guidePayments = await Payment.find({
+            status: { $in: ["pending", "paid"] },
+            $or: [
+                { guideId },
+                { bookingId: { $in: dashboardBookingIds } },
+            ],
+        })
+            .select(GUIDE_DASHBOARD_PAYMENT_SELECT)
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const latestPaymentByBookingId = new Map();
+
+        guidePayments.forEach((payment) => {
+            const normalizedPayment = normalizeGuidePayment(payment, guideId);
+            const bookingId = normalizedPayment?.bookingId?.toString();
+
+            if (bookingId && !latestPaymentByBookingId.has(bookingId)) {
+                latestPaymentByBookingId.set(bookingId, normalizedPayment);
+            }
+        });
+
+        const enrichedDashboardBookings = dashboardBookings.map((booking) => {
+            const payment = latestPaymentByBookingId.get(booking._id.toString());
+
+            if (!payment) {
+                return booking;
+            }
+
+            return {
+                ...booking,
+                payment,
+            };
+        });
+
         const pendingBookings = [];
         const scheduledBookings = [];
         const activeBookings = [];
         const completedBookings = [];
         const rejectedBookings = [];
 
-        dashboardBookings.forEach((booking) => {
+        enrichedDashboardBookings.forEach((booking) => {
             if (booking.status === "pending") {
                 pendingBookings.push(booking);
             } else if (booking.status === "awaiting_payment" || booking.status === "scheduled") {
@@ -235,12 +322,68 @@ export const getGuideDashboardData = async (req, res) => {
         completedBookings.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
         rejectedBookings.sort((a, b) => new Date(b.rejectedAt) - new Date(a.rejectedAt));
 
+        const latestGuidePayments = Array.from(latestPaymentByBookingId.values());
+        const paidGuidePayments = latestGuidePayments.filter((payment) => payment.status === "paid");
+        const earningsSummary = paidGuidePayments.reduce(
+            (accumulator, payment) => {
+                const paymentAmount = payment.amount || 0;
+
+                accumulator.grossEarnings += paymentAmount;
+                accumulator.paidBookingCount += 1;
+
+                if (payment.guidePayoutStatus === "available") {
+                    accumulator.availableEarnings += paymentAmount;
+                    accumulator.availablePaymentCount += 1;
+                }
+
+                if (payment.guidePayoutStatus === "sandbox_paid_out") {
+                    accumulator.sandboxPaidOutEarnings += paymentAmount;
+                    accumulator.sandboxCashoutCount += 1;
+                }
+
+                return accumulator;
+            },
+            {
+                grossEarnings: 0,
+                availableEarnings: 0,
+                sandboxPaidOutEarnings: 0,
+                paidBookingCount: 0,
+                availablePaymentCount: 0,
+                sandboxCashoutCount: 0,
+            }
+        );
+
+        const earningsBookings = [...scheduledBookings, ...activeBookings, ...completedBookings]
+            .filter((booking) => booking.payment?.status === "paid")
+            .sort(
+                (leftBooking, rightBooking) =>
+                    new Date(
+                        rightBooking.payment?.paidAt ||
+                        rightBooking.payment?.createdAt ||
+                        rightBooking.completedAt ||
+                        rightBooking.createdAt ||
+                        0
+                    ) -
+                    new Date(
+                        leftBooking.payment?.paidAt ||
+                        leftBooking.payment?.createdAt ||
+                        leftBooking.completedAt ||
+                        leftBooking.createdAt ||
+                        0
+                    )
+            );
+
+        const cashoutHistory = buildGuideCashoutHistory(latestGuidePayments);
+
         res.json({
             pendingBookings,
             scheduledBookings,
             activeBookings,
             completedBookings,
             rejectedBookings,
+            earningsSummary,
+            earningsBookings,
+            cashoutHistory,
             unavailableDates: req.user.unavailableDates || [],
         });
     } catch (error) {

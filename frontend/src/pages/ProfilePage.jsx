@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
-import { useAuth } from '../context/AuthContext';
+import GuideApplicationForm from '../components/GuideApplicationForm';
+import { useAuth } from '../context/useAuth';
 import api from '../lib/axios';
 
 const ProfilePage = () => {
@@ -17,10 +18,6 @@ const ProfilePage = () => {
   const [uploadingPicture, setUploadingPicture] = useState(false);
   
   const [showGuideForm, setShowGuideForm] = useState(false);
-  const [guideFormData, setGuideFormData] = useState({
-    accreditationFile: null,
-    accreditationFileName: '',
-  });
   const [submitting, setSubmitting] = useState(false);
 
   // Handle profile picture upload
@@ -84,41 +81,36 @@ const ProfilePage = () => {
     ? (user.totalStars / user.totalRatings).toFixed(1)
     : null;
 
+  const formatGuideAddress = (guideAddress) => {
+    if (!guideAddress?.regionName) {
+      return 'Not provided';
+    }
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-      if (file) {
-        if (file.size > 1 * 1024 * 1024) {
-          toast.error('File size must be less than 1MB');
-          return;
-        }
-        
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setGuideFormData(prev => ({
-            ...prev,
-            accreditationFile: reader.result,
-            accreditationFileName: file.name,
-          }));
-        };
-        reader.readAsDataURL(file);
-      }
+    return [
+      guideAddress.streetAddress,
+      guideAddress.barangayName,
+      guideAddress.cityMunicipalityName,
+      guideAddress.provinceName,
+      guideAddress.regionName,
+    ]
+      .filter(Boolean)
+      .join(', ');
   };
 
-  const handleGuideApplication = async (e) => {
-      e.preventDefault();
-      
-      if (!guideFormData.accreditationFile) {
-          toast.error('Please upload your accreditation document');
-          return;
-      }
+  const getLivenessStatusLabel = (status) => {
+    if (status === 'verified') return 'Verified';
+    if (status === 'rejected') return 'Needs Review';
+    if (status === 'pending') return 'Pending Review';
+    return 'Not started';
+  };
 
+  const handleGuideApplication = async (applicationData) => {
       setSubmitting(true);
       try {
-          await applyForGuide(
-              guideFormData.accreditationFile,
-              guideFormData.accreditationFileName
-          );
+          await applyForGuide(applicationData);
+          if (refreshUser) {
+            await refreshUser();
+          }
           toast.success('Application submitted successfully!');
           setShowGuideForm(false);
       } catch (error) {
@@ -281,91 +273,14 @@ const ProfilePage = () => {
                       </div>
 
                       {showGuideForm && (
-                          <form onSubmit={handleGuideApplication} className="mt-6 space-y-4">
-                              {/* Profile Picture Required Notice */}
-                              {!user?.profilePicture && (
-                                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                                      <p className="text-amber-800 text-sm">
-                                          <strong>Note:</strong> A profile picture is required before applying as a tour guide. 
-                                          Please upload one by clicking on your profile picture above.
-                                      </p>
-                                  </div>
-                              )}
-
-                              {/* Account Information Consent Notice */}
-                              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                                  <p className="text-blue-800 text-sm">
-                                      <strong>Note:</strong> Your account information (name, email, and phone number) will be included as part of your guide application. By clicking "Submit Application", you consent to this information being shared with our admin team for review.
-                                  </p>
-                              </div>
-
-                              <div>
-                                  <label className="block text-sm font-medium text-stone-700 mb-2">
-                                      Accreditation / ID Document
-                                  </label>
-                                  <p className="text-xs text-stone-500 mb-2">
-                                      Upload your DOT accreditation card, government ID, or relevant certification.
-                                  </p>
-                                  <div className="relative">
-                                      <input
-                                          type="file"
-                                          accept="image/*,.pdf"
-                                          onChange={handleFileChange}
-                                          className="hidden"
-                                          id="accreditation-file"
-                                      />
-                                      <label
-                                          htmlFor="accreditation-file"
-                                          className="flex items-center justify-center gap-3 w-full p-6 border-2 border-dashed border-stone-300 rounded-xl cursor-pointer hover:border-terracotta-400 hover:bg-terracotta-50/50 transition-colors"
-                                      >
-                                          {guideFormData.accreditationFileName ? (
-                                              <div className="flex items-center gap-3">
-                                                  <FileText className="w-8 h-8 text-terracotta-500" />
-                                                  <div className="text-left">
-                                                      <p className="font-medium text-stone-800">
-                                                          {guideFormData.accreditationFileName}
-                                                      </p>
-                                                      <p className="text-xs text-stone-500">
-                                                          Click to change file
-                                                      </p>
-                                                  </div>
-                                              </div>
-                                          ) : (
-                                              <div className="text-center">
-                                                  <Upload className="w-8 h-8 text-stone-400 mx-auto mb-2" />
-                                                  <p className="text-stone-600 font-medium">
-                                                      Click to upload
-                                                  </p>
-                                                  <p className="text-xs text-stone-500">
-                                                      PNG, JPG, or PDF (max 1MB)
-                                                  </p>
-                                              </div>
-                                          )}
-                                      </label>
-                                  </div>
-                              </div>
-
-                              <div className="flex gap-3 pt-2">
-                                  <button
-                                      type="button"
-                                      onClick={() => setShowGuideForm(false)}
-                                      className="flex-1 px-4 py-3 border border-stone-300 text-stone-700 font-medium rounded-xl hover:bg-stone-50 transition-colors"
-                                  >
-                                      Cancel
-                                  </button>
-                                  <button
-                                      type="submit"
-                                      disabled={submitting || !user?.profilePicture}
-                                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-terracotta-600 hover:bg-terracotta-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                      {submitting ? (
-                                          <Loader2 className="w-5 h-5 animate-spin" />
-                                      ) : (
-                                          'Submit Application'
-                                      )}
-                                  </button>
-                              </div>
-                          </form>
+                          <GuideApplicationForm
+                              user={user}
+                              submitting={submitting}
+                              onSubmit={handleGuideApplication}
+                              onCancel={() => setShowGuideForm(false)}
+                              submitLabel="Submit Application"
+                              submitButtonClassName="bg-terracotta-600 hover:bg-terracotta-700 text-white"
+                          />
                       )}
                   </div>
               )}
@@ -451,83 +366,16 @@ const ProfilePage = () => {
                       </div>
 
                       {showGuideForm && (
-                          <form onSubmit={handleGuideApplication} className="mt-6 space-y-4 border-t border-amber-200 pt-6">
-                              {/* Profile Picture Required Notice */}
-                              {!user?.profilePicture && (
-                                  <div className="bg-sand-50 border border-sand-200 rounded-xl p-4">
-                                      <p className="text-sand-700 text-sm">
-                                          <strong>Note:</strong> A profile picture is required for guide applications. Please upload one above before submitting.
-                                      </p>
-                                  </div>
-                              )}
-
-                              {/* Account Information Consent Notice */}
-                              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                                  <p className="text-blue-800 text-sm">
-                                      <strong>Note:</strong> Your account information (name, email, and phone number) will be included as part of your guide application. By clicking "Resubmit Application", you consent to this information being shared with our admin team for review.
-                                  </p>
-                              </div>
-
-                              <div>
-                                  <label className="block text-stone-600 text-sm mb-2">
-                                      DOT Accreditation Document
-                                  </label>
-                                  <div className="border-2 border-dashed border-stone-300 rounded-xl p-6 text-center hover:border-amber-400 transition-colors">
-                                      <input
-                                          type="file"
-                                          accept=".pdf,.jpg,.jpeg,.png"
-                                          onChange={(e) => {
-                                              const file = e.target.files[0];
-                                              if (file) {
-                                                  const reader = new FileReader();
-                                                  reader.onloadend = () => {
-                                                      setGuideFormData(prev => ({
-                                                          ...prev,
-                                                          accreditationFile: reader.result,
-                                                          accreditationFileName: file.name,
-                                                      }));
-                                                  };
-                                                  reader.readAsDataURL(file);
-                                              }
-                                          }}
-                                          className="hidden"
-                                          id="accreditation-reupload"
-                                          required
-                                      />
-                                      <label htmlFor="accreditation-reupload" className="cursor-pointer">
-                                          <Upload className="w-8 h-8 text-stone-400 mx-auto mb-2" />
-                                          <p className="text-stone-600 text-sm">
-                                              {guideFormData.accreditationFileName || 'Click to upload your DOT accreditation'}
-                                          </p>
-                                          <p className="text-stone-400 text-xs mt-1">PDF, JPG, or PNG (max 1MB)</p>
-                                      </label>
-                                  </div>
-                              </div>
-
-                              <div className="flex gap-3 pt-2">
-                                  <button
-                                      type="button"
-                                      onClick={() => setShowGuideForm(false)}
-                                      className="flex-1 px-4 py-3 border border-stone-300 text-stone-700 font-medium rounded-xl hover:bg-stone-50 transition-colors"
-                                  >
-                                      Cancel
-                                  </button>
-                                  <button
-                                      type="submit"
-                                      disabled={submitting || !user?.profilePicture}
-                                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50"
-                                  >
-                                      {submitting ? (
-                                          <>
-                                              <Loader2 className="w-4 h-4 animate-spin" />
-                                              Submitting...
-                                          </>
-                                      ) : (
-                                          'Resubmit Application'
-                                      )}
-                                  </button>
-                              </div>
-                          </form>
+                          <div className="mt-6 border-t border-amber-200 pt-6">
+                              <GuideApplicationForm
+                                  user={user}
+                                  submitting={submitting}
+                                  onSubmit={handleGuideApplication}
+                                  onCancel={() => setShowGuideForm(false)}
+                                  submitLabel="Resubmit Application"
+                                  submitButtonClassName="bg-amber-600 hover:bg-amber-700 text-white"
+                              />
+                          </div>
                       )}
                   </div>
               )}
@@ -573,7 +421,7 @@ const ProfilePage = () => {
                                       } else {
                                           navigate('/dashboard');
                                       }
-                                  } catch (error) {
+                                  } catch {
                                       toast.error('Failed to switch mode');
                                   } finally {
                                       setTogglingMode(false);
@@ -636,6 +484,30 @@ const ProfilePage = () => {
                               }) : 'N/A'}
                           </span>
                       </div>
+                      {(user?.guideStatus || user?.guideAddress?.regionName) && (
+                          <div className="flex items-start justify-between gap-4 py-3 border-b border-stone-100">
+                              <span className="text-stone-500">Guide Address</span>
+                              <span className="text-stone-800 font-medium text-right max-w-[60%]">{formatGuideAddress(user?.guideAddress)}</span>
+                          </div>
+                      )}
+                      {user?.guideApplicationSubmittedAt && (
+                          <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                              <span className="text-stone-500">Guide Application</span>
+                              <span className="text-stone-800 font-medium">
+                                  {new Date(user.guideApplicationSubmittedAt).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: 'long',
+                                      day: 'numeric'
+                                  })}
+                              </span>
+                          </div>
+                      )}
+                      {user?.livenessCheckStatus && (
+                          <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                              <span className="text-stone-500">Liveness Check</span>
+                              <span className="text-stone-800 font-medium">{getLivenessStatusLabel(user.livenessCheckStatus)}</span>
+                          </div>
+                      )}
                       {isApprovedGuide && (
                           <>
                               <div className="flex items-center justify-between py-3 border-b border-stone-100">

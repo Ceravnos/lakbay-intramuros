@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { Eye, EyeOff, MapPin, Mail, Lock, User, Phone, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 import KenBurnsBackground from "../../components/KenBurnsBackground";
 import { getPostAuthRedirect } from "../../lib/utils";
 

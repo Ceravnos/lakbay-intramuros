@@ -1,5 +1,5 @@
 import { Route, Routes } from 'react-router'
-import { AuthProvider } from './context/AuthContext'
+import { AuthProvider } from './context/AuthContext.jsx'
 import { SocketProvider } from './context/SocketContext'
 import { GuestRoute, AdminRoute, GuideRoute, ProtectedRoute } from './components/ProtectedRoute'
 

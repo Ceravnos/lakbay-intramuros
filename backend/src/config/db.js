@@ -12,5 +12,3 @@ export const connectDB = async () => {
         console.error("[db.js] Error connecting to MonggoDB", error)
     }
 }
-
-//mongodb+srv://lakbayAdmin:lakbayAdmin123@lakbay-intramuros.ohajp0h.mongodb.net/?appName=lakbay-intramuros 
